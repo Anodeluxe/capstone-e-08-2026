@@ -1,0 +1,47 @@
+# Web framework
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+
+# MQTT
+paho-mqtt==2.1.0
+
+# Database
+sqlalchemy==2.0.35
+asyncpg==0.29.0
+alembic==1.13.3
+psycopg2-binary==2.9.9
+
+# Pydantic / settings
+pydantic==2.9.2
+pydantic-settings==2.5.2
+
+# Background tasks
+celery==5.4.0
+redis==5.1.0
+
+# Notifications
+fastapi-mail==1.4.1
+httpx==0.27.2           # For WhatsApp (Fonnte) HTTP API
+
+# ML / Prediction
+scikit-learn==1.5.2
+numpy==2.1.1
+pandas==2.2.3
+ruptures==1.1.9         # Change-point / sudden anomaly detection
+statsmodels==0.14.3
+
+# Scheduling (periodic prediction jobs)
+apscheduler==3.10.4
+
+# Auth / Security
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
+# Utilities
+python-dotenv==1.0.1
+python-multipart==0.0.12
+
+# Testing
+pytest==8.3.3
+pytest-asyncio==0.24.0
+httpx==0.27.2          # also used for WhatsApp; doubles as AsyncClient for TestClient

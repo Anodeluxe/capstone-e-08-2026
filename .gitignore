@@ -1,0 +1,15 @@
+cat > .gitignore << 'EOF'
+# Python
+__pycache__/
+*.pyc
+.venv/
+backend/.env
+
+# Node
+node_modules/
+frontend/.next/
+frontend/.env.local
+
+# Docker
+*.log
+EOF
