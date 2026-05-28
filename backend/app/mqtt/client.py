@@ -42,14 +42,21 @@ class MQTTClient:
     # ── Lifecycle ──────────────────────────────────────────────────────────────
 
     def start(self) -> None:
-        """Connect and start the background network loop."""
+        """
+        Start the background network loop.
+        Uses connect_async() so a missing broker does not crash startup —
+        paho will keep retrying in the background thread.
+        """
         print(f"[MQTT] Connecting to {settings.mqtt_broker_host}:{settings.mqtt_broker_port}")
-        self._client.connect(
-            host=settings.mqtt_broker_host,
-            port=settings.mqtt_broker_port,
-            keepalive=60,
-        )
-        self._client.loop_start()
+        try:
+            self._client.connect_async(
+                host=settings.mqtt_broker_host,
+                port=settings.mqtt_broker_port,
+                keepalive=60,
+            )
+            self._client.loop_start()
+        except Exception as e:
+            print(f"[MQTT] Could not reach broker: {e}. Sensor data will not be received until the broker is available.")
 
     def stop(self) -> None:
         """Gracefully disconnect."""
