@@ -21,7 +21,6 @@ redis==5.1.0
 
 # Notifications
 fastapi-mail==1.4.1
-httpx==0.27.2           # For WhatsApp (Fonnte) HTTP API
 
 # ML / Prediction
 scikit-learn==1.5.2
@@ -44,4 +43,4 @@ python-multipart==0.0.12
 # Testing
 pytest==8.3.3
 pytest-asyncio==0.24.0
-httpx==0.27.2          # also used for WhatsApp; doubles as AsyncClient for TestClient
+httpx==0.27.2           # WhatsApp HTTP calls + AsyncClient for tests
