@@ -1,84 +1,103 @@
-"""
-Model Persistence — Predictor
-──────────────────────────────
-Saves and loads trained sklearn model bundles to/from disk as .pkl files
-so the prediction service does not need to refit from scratch on every call.
-
-Usage flow:
-  1. trainer.py calls train_model() → ModelBundle
-  2. save_bundle(bundle, path) writes it to disk
-  3. load_bundle(path) restores it for fast inference
-  4. predict_score_at_hour(bundle, hours) runs inference
-"""
-
+import pandas as pd
+import numpy as np
 import pickle
-from dataclasses import dataclass, field
-from datetime import datetime
-from pathlib import Path
-from typing import Any
+import joblib
+from tensorflow.keras.models import load_model
+from sklearn.metrics import mean_squared_error, mean_absolute_error
+import os
 
-
-@dataclass
-class ModelBundle:
+# ==========================================
+# FUNGSI EVALUASI CUSTOM
+# ==========================================
+def asymmetric_error(y_true, y_pred):
     """
-    A fully self-contained, serialisable model state.
-    Contains everything needed to make a prediction without re-fitting.
+    Memberikan penalti 2x lipat lebih besar jika AI menebak RUL lebih tinggi 
+    dari aslinya (Telat menguras = Bahaya).
     """
-    model: Any                   # LinearRegression or Ridge
-    poly: Any | None             # PolynomialFeatures (None for linear model)
-    model_type: str              # "linear_regression" | "polynomial_ridge"
-    threshold: float             # score threshold the model targets
-    r2: float                    # R² of the fit (confidence proxy)
-    trained_at: datetime = field(default_factory=datetime.utcnow)
-    hours_window: float = 72.0   # training data window in hours
-    data_points: int = 0
+    errors = y_pred.flatten() - y_true.flatten()
+    # Jika errors > 0 (Prediksi > Asli), kuadratkan lalu kalikan 2
+    penalties = np.where(errors > 0, errors**2 * 2.0, errors**2)
+    return np.mean(penalties)
 
+def create_sequences(X, y, time_steps):
+    Xs, ys = [], []
+    for i in range(len(X) - time_steps):
+        Xs.append(X[i:(i + time_steps)])
+        ys.append(y[i + time_steps])
+    return np.array(Xs), np.array(ys)
 
-def save_bundle(bundle: ModelBundle, path: str | Path) -> None:
-    """Pickle a ModelBundle to disk. Creates parent directories as needed."""
-    dest = Path(path)
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    with open(dest, "wb") as f:
-        pickle.dump(bundle, f, protocol=pickle.HIGHEST_PROTOCOL)
-    print(f"[Predictor] Model saved → {dest}")
+print("1. Memuat Dataset Ujian dan Tools Machine Learning...")
 
+# 1. Load Data Mentah
+df_test = pd.read_csv('./data_testing_baru.csv')
 
-def load_bundle(path: str | Path) -> ModelBundle | None:
-    """
-    Load a ModelBundle from disk.
-    Returns None if the file doesn't exist or can't be loaded
-    (graceful fallback so the app always starts).
-    """
-    src = Path(path)
-    if not src.exists():
-        return None
-    try:
-        with open(src, "rb") as f:
-            bundle = pickle.load(f)
-        if not isinstance(bundle, ModelBundle):
-            return None
-        print(f"[Predictor] Model loaded ← {src} (trained {bundle.trained_at.isoformat()})")
-        return bundle
-    except Exception as e:
-        print(f"[Predictor] Failed to load model from {src}: {e}")
-        return None
+fitur_x = [
+    'ph', 'Solids', 'Turbidity', 'Temperature',
+    'Turbidity_MA_3', 'Solids_MA_3', 'ph_MA_3',
+    'Turbidity_Diff', 'Solids_Diff', 'ph_Diff',
+    'Turbidity_Std_3', 'Solids_Std_3'
+]
 
+X_raw = df_test[fitur_x].values
+y_true = df_test['RUL'].values
 
-def predict_score_at_hour(bundle: ModelBundle, hours_from_t0: float) -> float:
-    """
-    Predict the quality score at `hours_from_t0` hours after the training
-    window's first data point.
+# 2. Load Scaler & Models
+# Pastikan path ini sesuai dengan struktur folder Anda
+try:
+    with open('models/scaler.pkl', 'rb') as file:
+        scaler = pickle.load(file)
+    model_xgb = joblib.load('models/xgb_model2.pkl')
+    model_gru = load_model('models/gru_model2.keras')
+except Exception as e:
+    print(f"Error memuat file: {e}")
+    print("Pastikan Anda sudah meletakkan scaler.pkl, xgb_model2.pkl, dan gru_model2.keras di dalam folder 'models'.")
+    exit()
 
-    Args:
-        bundle: loaded ModelBundle
-        hours_from_t0: hours elapsed from the first training sample
+# 3. Transformasi Data (Menggunakan Scaler yang sudah punya "ingatan")
+# PENTING: Gunakan .transform(), BUKAN .fit_transform()
+X_scaled = scaler.transform(X_raw)
 
-    Returns:
-        Predicted score (may be < 0 or > 100 for extreme extrapolation).
-    """
-    import numpy as np
+print("2. Proses Prediksi Dimulai...\n")
+print("-" * 50)
 
-    X = np.array([[hours_from_t0]])
-    if bundle.poly is not None:
-        X = bundle.poly.transform(X)
-    return float(bundle.model.predict(X)[0])
+# ==========================================
+# PENGUJIAN XGBOOST (Pendekatan Tabular)
+# ==========================================
+pred_xgb = model_xgb.predict(X_scaled)
+
+rmse_xgb = np.sqrt(mean_squared_error(y_true, pred_xgb))
+mae_xgb = mean_absolute_error(y_true, pred_xgb)
+asym_xgb = asymmetric_error(y_true, pred_xgb)
+
+print("HASIL EVALUASI XGBOOST:")
+print(f"RMSE             : {rmse_xgb:.2f} hari")
+print(f"MAE              : {mae_xgb:.2f} hari")
+print(f"Asymmetric Error : {asym_xgb:.2f} (Semakin kecil semakin aman)")
+print("-" * 50)
+
+# ==========================================
+# PENGUJIAN GRU (Pendekatan Sequence)
+# ==========================================
+# GRU butuh potongan waktu 5 hari (harus sama dengan saat training)
+TIMESTEPS = 5
+X_gru, y_true_gru = create_sequences(X_scaled, y_true, TIMESTEPS)
+
+# Proses Prediksi
+pred_gru = model_gru.predict(X_gru, verbose=0)
+
+rmse_gru = np.sqrt(mean_squared_error(y_true_gru, pred_gru))
+mae_gru = mean_absolute_error(y_true_gru, pred_gru)
+asym_gru = asymmetric_error(y_true_gru, pred_gru)
+
+print("HASIL EVALUASI GRU:")
+print(f"RMSE             : {rmse_gru:.2f} hari")
+print(f"MAE              : {mae_gru:.2f} hari")
+print(f"Asymmetric Error : {asym_gru:.2f} (Semakin kecil semakin aman)")
+print("-" * 50)
+
+# Kesimpulan Cepat
+print("\nKESIMPULAN:")
+if mae_gru < mae_xgb:
+    print("-> GRU terbukti lebih akurat dalam membaca data harian murni (MAE lebih kecil).")
+else:
+    print("-> XGBoost ternyata lebih tangguh menghadapi dataset yang benar-benar asing (MAE lebih kecil).")
