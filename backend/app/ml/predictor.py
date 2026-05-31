@@ -46,8 +46,8 @@ y_true = df_test['RUL'].values
 try:
     with open('models/scaler.pkl', 'rb') as file:
         scaler = pickle.load(file)
-    model_xgb = joblib.load('models/xgb_model2.pkl')
-    model_gru = load_model('models/gru_model2.keras')
+    model_xgb = joblib.load('models/xgb_model3.pkl')
+    model_gru = load_model('models/gru_model3.keras')
 except Exception as e:
     print(f"Error memuat file: {e}")
     print("Pastikan Anda sudah meletakkan scaler.pkl, xgb_model2.pkl, dan gru_model2.keras di dalam folder 'models'.")

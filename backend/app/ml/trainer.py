@@ -47,7 +47,7 @@ xgb_time = time.time() - start_xgb
 
 pred_xgb = model_xgb.predict(X_test)
 rmse_xgb = np.sqrt(mean_squared_error(y_test, pred_xgb))
-joblib.dump(model_xgb, 'models/xgb_model.pkl') 
+joblib.dump(model_xgb, 'models/xgb_model3.pkl') 
 print(f"XGBoost Selesai! RMSE: {rmse_xgb:.2f} hari, Waktu: {xgb_time:.2f}s")
 
 # ==========================================
@@ -78,6 +78,6 @@ gru_time = time.time() - start_gru
 
 pred_gru = model_gru.predict(X_test_3d, verbose=0)
 rmse_gru = np.sqrt(mean_squared_error(y_test, pred_gru))
-model_gru.save('models/gru_model.keras') # Disimpan menggunakan format .keras terbaru
+model_gru.save('models/gru_model3.keras') # Disimpan menggunakan format .keras terbaru
 
 print(f"GRU Selesai! RMSE: {rmse_gru:.2f} hari, Waktu: {gru_time:.2f}s")
