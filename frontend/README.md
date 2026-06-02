@@ -29,6 +29,12 @@ To learn more about Next.js, take a look at the following resources:
 
 You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
+## Demo Mode
+
+The app ships with `NEXT_PUBLIC_DEMO_MODE=true` in `.env.local`, which populates all pages with realistic dummy data so the UI is visible without a running backend.
+
+To switch back to the real backend: set `NEXT_PUBLIC_DEMO_MODE=false` (or remove the line) in `.env.local`. The app will reconnect to the real API and WebSocket automatically.
+
 ## Deploy on Vercel
 
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
