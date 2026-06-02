@@ -58,7 +58,7 @@ export default function OverrideModal({ open, onClose, valve, action }: Props) {
         </DialogHeader>
 
         {action === 'close' && (
-          <div className="rounded-md bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 px-3 py-2 text-sm text-yellow-800 dark:text-yellow-200">
+          <div className="rounded-md bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
             Menutup katup secara manual dapat mempengaruhi distribusi air ke{' '}
             {VALVE_LABELS[valve.id].toLowerCase()}.
           </div>
@@ -66,7 +66,7 @@ export default function OverrideModal({ open, onClose, valve, action }: Props) {
 
         <div>
           <label className="text-sm font-medium mb-1.5 block">
-            Alasan <span className="text-zinc-400 font-normal">(opsional)</span>
+            Alasan <span className="text-muted-foreground font-normal">(opsional)</span>
           </label>
           <input
             type="text"
@@ -74,7 +74,7 @@ export default function OverrideModal({ open, onClose, valve, action }: Props) {
             onChange={(e) => setReason(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && !isPending && handleConfirm()}
             placeholder="Masukkan alasan override..."
-            className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-zinc-400 dark:bg-zinc-800 dark:border-zinc-700"
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring placeholder:text-muted-foreground disabled:opacity-50"
             disabled={isPending}
           />
         </div>

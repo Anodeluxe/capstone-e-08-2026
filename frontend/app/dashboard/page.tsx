@@ -23,21 +23,20 @@ export default function DashboardPage() {
   }
 
   const valveMap = Object.fromEntries((data?.valve_states ?? []).map((v) => [v.id, v]))
-
   const latest = latestReading ?? data?.latest_reading
 
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-xl font-semibold">Dashboard</h1>
-        <p className="text-sm text-zinc-500 mt-0.5">Monitoring kualitas air toren secara real-time</p>
+        <h1 className="text-xl font-semibold tracking-tight">Dashboard</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">Monitoring kualitas air toren secara real-time</p>
       </div>
 
-      <AlertBanner />
       <SystemStatus />
+      <AlertBanner />
 
       <section>
-        <h2 className="text-xs font-medium text-zinc-500 uppercase tracking-widest mb-3">
+        <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-widest mb-3">
           Skor Kualitas per Titik Distribusi
         </h2>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -52,10 +51,9 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      {/* Live sensor readings */}
       {latest && (
         <section>
-          <h2 className="text-xs font-medium text-zinc-500 uppercase tracking-widest mb-3">
+          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-widest mb-3">
             Pembacaan Sensor Terkini
           </h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
@@ -66,11 +64,15 @@ export default function DashboardPage() {
               { label: 'Suhu', value: latest.temperature.toFixed(1), unit: ' °C' },
               { label: 'Level Air', value: latest.water_level.toFixed(1), unit: '%' },
             ].map(({ label, value, unit }) => (
-              <div key={label} className="rounded-xl border bg-white dark:bg-zinc-900 px-4 py-3 shadow-sm">
-                <p className="text-xs text-zinc-500 mb-0.5">{label}</p>
-                <p className="text-2xl font-bold">
+              <div
+                key={label}
+                className="rounded-xl border border-border bg-card px-4 py-3"
+                style={{ boxShadow: '0 2px 12px -4px oklch(0.4 0.1 220 / 0.08)' }}
+              >
+                <p className="text-xs text-muted-foreground mb-0.5">{label}</p>
+                <p className="text-2xl font-bold font-mono tracking-tight tabular-nums">
                   {value}
-                  <span className="text-sm font-normal text-zinc-400">{unit}</span>
+                  <span className="text-sm font-normal text-muted-foreground ml-0.5">{unit}</span>
                 </p>
               </div>
             ))}
@@ -79,7 +81,7 @@ export default function DashboardPage() {
       )}
 
       {isLoading ? (
-        <div className="h-64 rounded-xl border bg-white dark:bg-zinc-900 animate-pulse" />
+        <div className="h-64 rounded-xl border border-border bg-card animate-pulse" />
       ) : (
         <TrendChart data={data?.trend_24h ?? []} />
       )}

@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Activity, Gauge, Droplets, TrendingUp } from 'lucide-react'
+import { Gauge, Activity, Droplets, TrendingUp, Waves } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useWSStore } from '@/hooks/useSensorWebSocket'
 
@@ -18,44 +18,51 @@ export default function Nav() {
   const { status } = useWSStore()
 
   return (
-    <header className="sticky top-0 z-40 border-b bg-white dark:bg-zinc-900 shadow-sm">
-      <div className="container mx-auto max-w-7xl px-4 flex h-14 items-center gap-6">
-        <span className="font-semibold text-sm shrink-0 text-zinc-800 dark:text-zinc-100">
-          Toren Monitoring
-        </span>
-        <nav className="flex gap-1 flex-1">
+    <header className="sticky top-0 z-40 border-b border-border/60 bg-background/90 backdrop-blur-md">
+      <div className="container mx-auto max-w-7xl px-4 flex h-14 items-center gap-8">
+        <Link href="/dashboard" className="flex items-center gap-2 shrink-0 group">
+          <Waves className="w-4 h-4 text-primary transition-transform duration-200 group-hover:scale-110" strokeWidth={2} />
+          <span className="font-semibold text-sm tracking-tight text-foreground">
+            Aminuddin<span className="text-primary">.</span>
+          </span>
+        </Link>
+
+        <nav className="flex gap-0.5 flex-1">
           {LINKS.map(({ href, label, icon: Icon }) => (
             <Link
               key={href}
               href={href}
               className={cn(
-                'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm transition-colors',
+                'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm transition-colors duration-150',
                 pathname.startsWith(href)
-                  ? 'bg-zinc-100 dark:bg-zinc-800 font-medium text-zinc-900 dark:text-zinc-50'
-                  : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-50 dark:hover:bg-zinc-800',
+                  ? 'bg-primary/10 text-primary font-medium'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary',
               )}
             >
-              <Icon className="w-4 h-4" />
+              <Icon className="w-3.5 h-3.5" strokeWidth={pathname.startsWith(href) ? 2 : 1.5} />
               {label}
             </Link>
           ))}
         </nav>
-        <div className="flex items-center gap-1.5 text-xs text-zinc-500 dark:text-zinc-400 shrink-0">
+
+        <div className="flex items-center gap-1.5 shrink-0">
           <span
             className={cn(
-              'w-2 h-2 rounded-full',
+              'w-1.5 h-1.5 rounded-full',
               status === 'connected'
-                ? 'bg-green-500'
+                ? 'bg-emerald-500'
                 : status === 'connecting'
-                  ? 'bg-yellow-400 animate-pulse'
-                  : 'bg-red-500',
+                  ? 'bg-amber-400 animate-pulse'
+                  : 'bg-rose-500',
             )}
           />
-          {status === 'connected'
-            ? 'Live'
-            : status === 'connecting'
-              ? 'Menghubungkan...'
-              : 'Terputus'}
+          <span className="text-xs text-muted-foreground">
+            {status === 'connected'
+              ? 'Live'
+              : status === 'connecting'
+                ? 'Menghubungkan'
+                : 'Terputus'}
+          </span>
         </div>
       </div>
     </header>

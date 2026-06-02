@@ -6,9 +6,9 @@ import { useWSStore } from '@/hooks/useSensorWebSocket'
 import type { AlertData } from '@/types'
 
 const ALERT_STYLES: Record<AlertData['alert_type'], string> = {
-  sudden_change: 'bg-red-50 border-red-300 text-red-800 dark:bg-red-950 dark:border-red-800 dark:text-red-200',
-  early_warning: 'bg-yellow-50 border-yellow-300 text-yellow-800 dark:bg-yellow-950 dark:border-yellow-800 dark:text-yellow-200',
-  valve_closed: 'bg-blue-50 border-blue-300 text-blue-800 dark:bg-blue-950 dark:border-blue-800 dark:text-blue-200',
+  sudden_change: 'bg-rose-50 border-rose-200 text-rose-800 dark:bg-rose-950/40 dark:border-rose-800/60 dark:text-rose-200',
+  early_warning: 'bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-950/40 dark:border-amber-800/60 dark:text-amber-200',
+  valve_closed: 'bg-primary/5 border-primary/20 text-primary dark:bg-primary/10 dark:border-primary/30',
 }
 
 const ALERT_LABELS: Record<AlertData['alert_type'], string> = {
@@ -37,7 +37,7 @@ export default function AlertBanner() {
           <span className="flex-1">{alert.message}</span>
           <button
             onClick={() => dismissAlert(i)}
-            className="shrink-0 ml-auto opacity-70 hover:opacity-100 transition-opacity"
+            className="shrink-0 ml-auto opacity-60 hover:opacity-100 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
             aria-label="Tutup peringatan"
           >
             <X className="w-4 h-4" />

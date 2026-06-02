@@ -30,29 +30,45 @@ export default function SensorChart({
   data,
   dataKey,
   label,
-  color = '#3b82f6',
+  color = '#0891b2',
   unit = '',
 }: Props) {
   return (
-    <div className="rounded-xl border bg-white dark:bg-zinc-900 p-4 shadow-sm">
-      <h3 className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-3">{label}</h3>
+    <div
+      className="rounded-xl border border-border bg-card p-4"
+      style={{ boxShadow: '0 2px 12px -4px oklch(0.4 0.1 220 / 0.08)' }}
+    >
+      <h3 className="text-sm font-medium text-foreground mb-3">{label}</h3>
       <ResponsiveContainer width="100%" height={200}>
         <LineChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" />
+          <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.91 0.008 220)" opacity={0.6} />
           <XAxis
             dataKey="timestamp"
             tickFormatter={(v: string) => format(parseISO(v), 'HH:mm', { locale: idLocale })}
-            tick={{ fontSize: 10 }}
+            tick={{ fontSize: 10, fontFamily: 'var(--font-mono)' }}
             interval="preserveStartEnd"
             minTickGap={40}
+            stroke="oklch(0.62 0.012 220)"
           />
-          <YAxis tick={{ fontSize: 10 }} width={42} unit={unit} />
+          <YAxis
+            tick={{ fontSize: 10, fontFamily: 'var(--font-mono)' }}
+            width={42}
+            unit={unit}
+            stroke="oklch(0.62 0.012 220)"
+          />
           <Tooltip
             labelFormatter={(v: unknown) =>
               format(parseISO(v as string), 'dd MMM yyyy HH:mm', { locale: idLocale })
             }
             formatter={(value: unknown) => [`${value as number}${unit}`, label]}
-            contentStyle={{ fontSize: 12 }}
+            contentStyle={{
+              fontSize: 12,
+              fontFamily: 'var(--font-mono)',
+              background: 'var(--card)',
+              border: '1px solid var(--border)',
+              borderRadius: '8px',
+              color: 'var(--foreground)',
+            }}
           />
           <Line
             type="monotone"

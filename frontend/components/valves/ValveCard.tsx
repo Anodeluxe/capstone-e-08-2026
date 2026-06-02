@@ -23,13 +23,16 @@ export default function ValveCard({ valve }: Props) {
 
   return (
     <>
-      <div className="rounded-xl border bg-white dark:bg-zinc-900 p-4 shadow-sm">
+      <div
+        className="rounded-xl border border-border bg-card p-4"
+        style={{ boxShadow: '0 2px 12px -4px oklch(0.4 0.1 220 / 0.08)' }}
+      >
         <div className="flex items-start justify-between mb-4">
           <div>
-            <h3 className="font-medium text-sm text-zinc-800 dark:text-zinc-100">
+            <h3 className="font-medium text-sm text-foreground">
               {VALVE_LABELS[valve.id]}
             </h3>
-            <p className="text-xs text-zinc-400 mt-0.5">
+            <p className="text-xs text-muted-foreground mt-0.5">
               Terakhir: {valve.last_changed_by}
             </p>
           </div>
@@ -37,10 +40,10 @@ export default function ValveCard({ valve }: Props) {
           <button
             onClick={handleToggle}
             className={cn(
-              'relative shrink-0 w-12 h-6 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1',
+              'relative shrink-0 w-12 h-6 rounded-full transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1',
               valve.is_open
-                ? 'bg-green-500 focus-visible:ring-green-400'
-                : 'bg-zinc-300 dark:bg-zinc-600 focus-visible:ring-zinc-400',
+                ? 'bg-emerald-500'
+                : 'bg-muted-foreground/30',
             )}
             aria-label={valve.is_open ? 'Tutup katup' : 'Buka katup'}
             aria-pressed={valve.is_open}
@@ -59,20 +62,20 @@ export default function ValveCard({ valve }: Props) {
             className={cn(
               'text-xs font-medium px-2 py-0.5 rounded-full',
               valve.is_open
-                ? 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300'
-                : 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300',
+                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300'
+                : 'bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300',
             )}
           >
             {valve.is_open ? 'Terbuka' : 'Tertutup'}
           </span>
           {valve.quality_score_at_close !== null && (
-            <span className="text-xs text-zinc-500">
+            <span className="text-xs text-muted-foreground font-mono">
               Skor: {valve.quality_score_at_close.toFixed(1)}
             </span>
           )}
         </div>
 
-        <p className="text-xs text-zinc-400 mt-2">
+        <p className="text-xs text-muted-foreground mt-2 font-mono">
           {format(parseISO(valve.last_changed_at), 'dd MMM HH:mm', { locale: idLocale })}
         </p>
       </div>

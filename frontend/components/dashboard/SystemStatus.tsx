@@ -5,11 +5,11 @@ import { useWSStore } from '@/hooks/useSensorWebSocket'
 import { useDashboardSummary } from '@/hooks/useSensorData'
 
 function formatAge(seconds: number | null): string {
-  if (seconds === null) return 'Tidak diketahui'
-  if (seconds < 60) return `${Math.round(seconds)}d yang lalu`
+  if (seconds === null) return 'tidak diketahui'
+  if (seconds < 60) return `${Math.round(seconds)}d lalu`
   const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `${minutes}m yang lalu`
-  return `${Math.floor(minutes / 60)}j yang lalu`
+  if (minutes < 60) return `${minutes}m lalu`
+  return `${Math.floor(minutes / 60)}j lalu`
 }
 
 export default function SystemStatus() {
@@ -18,32 +18,28 @@ export default function SystemStatus() {
 
   const mqttConnected = data?.system_status.mqtt_connected ?? false
   const age = data?.system_status.last_reading_age_seconds ?? null
+  const anomalies = data?.anomaly_count_24h ?? 0
 
   return (
-    <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-zinc-600 dark:text-zinc-400 rounded-lg border bg-white dark:bg-zinc-900 px-4 py-3">
-      <div className="flex items-center gap-1.5">
-        <span className={cn('w-2 h-2 rounded-full', mqttConnected ? 'bg-green-500' : 'bg-red-500')} />
-        <span>MQTT: {mqttConnected ? 'Terhubung' : 'Terputus'}</span>
-      </div>
-      <div className="flex items-center gap-1.5">
+    <div className="flex flex-wrap gap-x-5 gap-y-1.5 text-xs text-muted-foreground">
+      <span className="flex items-center gap-1.5">
+        <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', mqttConnected ? 'bg-emerald-500' : 'bg-rose-500')} />
+        MQTT {mqttConnected ? 'terhubung' : 'terputus'}
+      </span>
+      <span className="flex items-center gap-1.5">
         <span
           className={cn(
-            'w-2 h-2 rounded-full',
-            status === 'connected' ? 'bg-green-500' : status === 'connecting' ? 'bg-yellow-400 animate-pulse' : 'bg-red-500',
+            'w-1.5 h-1.5 rounded-full shrink-0',
+            status === 'connected' ? 'bg-emerald-500' : status === 'connecting' ? 'bg-amber-400 animate-pulse' : 'bg-rose-500',
           )}
         />
-        <span>
-          WebSocket:{' '}
-          {status === 'connected' ? 'Live' : status === 'connecting' ? 'Menghubungkan...' : 'Terputus'}
-        </span>
-      </div>
-      <div className="flex items-center gap-1.5">
-        <span>Pembacaan terakhir: {formatAge(age)}</span>
-      </div>
+        WebSocket {status === 'connected' ? 'live' : status === 'connecting' ? 'menghubungkan' : 'terputus'}
+      </span>
+      <span>Pembacaan: {formatAge(age)}</span>
       {data && (
-        <div className="flex items-center gap-1.5">
-          <span>Anomali (24j): {data.anomaly_count_24h}</span>
-        </div>
+        <span className={cn(anomalies > 0 ? 'text-amber-600 dark:text-amber-400' : '')}>
+          {anomalies} anomali (24j)
+        </span>
       )}
     </div>
   )

@@ -13,14 +13,14 @@ export default function ValvesPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-xl font-semibold">Kontrol Katup</h1>
-        <p className="text-sm text-zinc-500 mt-0.5">Kelola status buka/tutup katup solenoid secara manual</p>
+        <h1 className="text-xl font-semibold tracking-tight">Kontrol Katup</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">Kelola status buka/tutup katup solenoid secara manual</p>
       </div>
 
       {isLoading ? (
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-36 rounded-xl border bg-white dark:bg-zinc-900 animate-pulse" />
+            <div key={i} className="h-36 rounded-xl border border-border bg-card animate-pulse" />
           ))}
         </div>
       ) : (
@@ -32,18 +32,21 @@ export default function ValvesPage() {
       )}
 
       <section>
-        <h2 className="text-xs font-medium text-zinc-500 uppercase tracking-widest mb-3">
+        <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-widest mb-3">
           Riwayat Override Manual
         </h2>
 
         {(overrides?.length ?? 0) === 0 ? (
-          <p className="text-sm text-zinc-400">Belum ada riwayat override.</p>
+          <p className="text-sm text-muted-foreground">Belum ada riwayat override.</p>
         ) : (
-          <div className="rounded-xl border bg-white dark:bg-zinc-900 overflow-hidden shadow-sm">
+          <div
+            className="rounded-xl border border-border bg-card overflow-hidden"
+            style={{ boxShadow: '0 2px 12px -4px oklch(0.4 0.1 220 / 0.08)' }}
+          >
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b bg-zinc-50 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 text-left">
+                  <tr className="border-b border-border bg-muted/50 text-muted-foreground text-left">
                     <th className="px-4 py-3 font-medium">Waktu</th>
                     <th className="px-4 py-3 font-medium">Katup</th>
                     <th className="px-4 py-3 font-medium">Aksi</th>
@@ -55,9 +58,9 @@ export default function ValvesPage() {
                   {(overrides ?? []).slice(0, 30).map((log) => (
                     <tr
                       key={log.id}
-                      className="border-b last:border-0 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
+                      className="border-b border-border/60 last:border-0 hover:bg-muted/40 transition-colors"
                     >
-                      <td className="px-4 py-2 text-zinc-400 whitespace-nowrap text-xs">
+                      <td className="px-4 py-2 text-muted-foreground whitespace-nowrap text-xs font-mono">
                         {format(parseISO(log.overridden_at), 'dd MMM yyyy HH:mm', { locale: idLocale })}
                       </td>
                       <td className="px-4 py-2 capitalize">{log.valve_id}</td>
@@ -66,15 +69,15 @@ export default function ValvesPage() {
                           className={cn(
                             'text-xs font-medium px-2 py-0.5 rounded-full',
                             log.action === 'open'
-                              ? 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300'
-                              : 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300',
+                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300'
+                              : 'bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300',
                           )}
                         >
                           {log.action === 'open' ? 'Buka' : 'Tutup'}
                         </span>
                       </td>
-                      <td className="px-4 py-2 text-zinc-500">{log.reason ?? '—'}</td>
-                      <td className="px-4 py-2 text-zinc-500">
+                      <td className="px-4 py-2 text-muted-foreground">{log.reason ?? '—'}</td>
+                      <td className="px-4 py-2 text-muted-foreground font-mono tabular-nums">
                         {log.score_at_override !== null ? log.score_at_override.toFixed(1) : '—'}
                       </td>
                     </tr>
