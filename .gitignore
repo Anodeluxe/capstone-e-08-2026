@@ -13,3 +13,7 @@ frontend/.env.local
 # Docker
 *.log
 EOF
+
+#claude
+.claude/
+.agents/
