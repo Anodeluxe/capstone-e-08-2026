@@ -3,6 +3,7 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { create } from 'zustand'
 import type { SensorReading, ValveState, AlertData, ScoreBreakdown } from '@/types'
+import { mockLatestReading, mockAlert } from '@/lib/mockData'
 
 type ConnectionStatus = 'connecting' | 'connected' | 'disconnected'
 
@@ -46,6 +47,8 @@ export const useWSStore = create<WSStore>((set) => ({
       alerts: state.alerts.filter((_, i) => i !== index),
     })),
 }))
+
+const IS_DEMO = process.env.NEXT_PUBLIC_DEMO_MODE === 'true'
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL ?? 'ws://localhost:8000/ws'
 const PING_INTERVAL_MS = 30_000
@@ -137,6 +140,13 @@ export function useSensorWebSocket() {
   }, [setStatus, setLatestReading, updateValveState, pushAlert])
 
   useEffect(() => {
+    if (IS_DEMO) {
+      setStatus('connected')
+      setLatestReading(mockLatestReading as SensorUpdate)
+      pushAlert(mockAlert)
+      return
+    }
+
     unmountedRef.current = false
     connect()
 
@@ -146,7 +156,7 @@ export function useSensorWebSocket() {
       clearReconnectTimer()
       wsRef.current?.close()
     }
-  }, [connect])
+  }, [connect, setStatus, setLatestReading, pushAlert])
 
   return useWSStore()
 }
