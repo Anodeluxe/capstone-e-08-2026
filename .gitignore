@@ -3,6 +3,8 @@ cat > .gitignore << 'EOF'
 __pycache__/
 *.pyc
 .venv/
+venv_windows/
+backend/venv_windows/
 backend/.env
 
 # Node
