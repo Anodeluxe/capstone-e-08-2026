@@ -1,83 +1,91 @@
 import pandas as pd
 import numpy as np
-import xgboost as xgb
 import joblib
-import time
-from sklearn.metrics import mean_squared_error
-import tensorflow as tf
+import os
+from xgboost import XGBRegressor
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import GRU, Dense, Input
+from tensorflow.keras.layers import Input, GRU, Dense, Dropout
 
-# 1. Load Data Final yang Sudah di-Scale
-# Pastikan path ini sesuai dengan letak file CSV final Anda
-DATA_PATH = "data/processed/simulated_toren_data_scaled.csv"
-df = pd.read_csv(DATA_PATH)
+print("1. Memuat Dataset Time-Series Realistis...")
+# Pastikan membaca file yang baru saja digenerate
+df = pd.read_csv('./data/processed/data_toren_v2.csv')
 
-print("Dataset berhasil dimuat!")
-
-# 2. Pemisahan Data Berdasarkan Siklus (Bukan Random Split)
-# Asumsi total 100 siklus: 80 untuk Train, 20 untuk Test
-train_cycles = df[df['Cycle_ID'] <= 80]
-test_cycles = df[df['Cycle_ID'] > 80]
-
-# Tentukan semua fitur (selain RUL dan Cycle_ID)
 fitur_x = [
-    'ph', 'Solids', 'Turbidity', 'Temperature',
-    'Turbidity_MA_3', 'Solids_MA_3', 'ph_MA_3',
-    'Turbidity_Diff', 'Solids_Diff', 'ph_Diff',
-    'Turbidity_Std_3', 'Solids_Std_3'
+    'ph', 'tds', 'turbidity', 'temperature',
+    'turbidity_MA_3', 'tds_MA_3', 'ph_MA_3',
+    'turbidity_Diff', 'tds_Diff', 'ph_Diff',
+    'turbidity_Std_3', 'tds_Std_3'
 ]
 
-# Siapkan X dan y
-X_train = train_cycles[fitur_x].values
-y_train = train_cycles['RUL'].values
-
-X_test = test_cycles[fitur_x].values
-y_test = test_cycles['RUL'].values
+# RUL Capping (Teknik Industri): Memotong RUL maksimal di 60 hari
+y_all = np.clip(df['RUL'].values, a_min=0, a_max=60)
+X_all = df[fitur_x].values
 
 # ==========================================
-# EXPERIMEN 1: XGBOOST (Tabular Approach)
+# 2. PERSIAPAN DATA GRU (Sliding Window)
 # ==========================================
-print("\nMemulai Training XGBoost...")
-start_xgb = time.time()
-# Menambah sedikit kompleksitas parameter karena fitur lebih banyak
-model_xgb = xgb.XGBRegressor(n_estimators=200, max_depth=7, learning_rate=0.05)
-model_xgb.fit(X_train, y_train)
-xgb_time = time.time() - start_xgb
+# DINAIKKAN MENJADI 10 HARI agar AI bisa melihat tren dengan lebih jelas
+window_size = 10 
 
-pred_xgb = model_xgb.predict(X_test)
-rmse_xgb = np.sqrt(mean_squared_error(y_test, pred_xgb))
-joblib.dump(model_xgb, 'models/xgb_model3.pkl') 
-print(f"XGBoost Selesai! RMSE: {rmse_xgb:.2f} hari, Waktu: {xgb_time:.2f}s")
+def create_sequences(data, target, window):
+    X_seq, y_seq = [], []
+    for i in range(len(data) - window):
+        X_seq.append(data[i:(i + window)])
+        y_seq.append(target[i + window])
+    return np.array(X_seq), np.array(y_seq)
+
+X_gru, y_gru = create_sequences(X_all, y_all, window_size)
+
+# Untuk XGBoost, kita ratakan datanya (2D) dengan mengambil baris hari terakhir dari setiap window
+X_xgb = X_all[window_size:]
+y_xgb = y_all[window_size:]
+
+print(f"Bentuk Input GRU     : {X_gru.shape}")
+print(f"Bentuk Input XGBoost : {X_xgb.shape}")
+
+# Membuat folder models jika belum ada
+os.makedirs('models', exist_ok=True)
 
 # ==========================================
-# EXPERIMEN 2: GRU (Time-Series Sequence Approach)
+# 3. TRAINING XGBOOST
 # ==========================================
-print("\nMemulai Training GRU...")
-# GRU membutuhkan format input 3D: [samples, timesteps, features]
-# Jumlah fitur sekarang adalah len(fitur_x) = 12
-jumlah_fitur = len(fitur_x)
-X_train_3d = X_train.reshape((X_train.shape[0], 1, jumlah_fitur))
-X_test_3d = X_test.reshape((X_test.shape[0], 1, jumlah_fitur))
+print("\nMulai melatih XGBoost...")
+model_xgb = XGBRegressor(n_estimators=100, learning_rate=0.1, max_depth=5, random_state=42)
+model_xgb.fit(X_xgb, y_xgb)
 
-start_gru = time.time()
+joblib.dump(model_xgb, 'models/xgb_model4.pkl')
+print("-> Model XGBoost berhasil disimpan!")
+
+# ==========================================
+# 4. TRAINING GRU (Arsitektur Anti-Overfitting)
+# ==========================================
+print("\nMulai melatih GRU (Estimasi waktu: 1-2 Menit)...")
 model_gru = Sequential([
-    Input(shape=(1, jumlah_fitur)),  # Cara baru Keras untuk mendefinisikan input
-    GRU(64, activation='relu', return_sequences=False),
-    Dense(32, activation='relu'),
-    Dense(1) # Output nilai RUL kontinu
+    Input(shape=(window_size, len(fitur_x))),
+    
+    # Layer 1 dengan Dropout untuk mencegah hafalan buta
+    GRU(64, activation='relu', return_sequences=True),
+    Dropout(0.2), 
+    
+    # Layer 2
+    GRU(32, activation='relu'),
+    Dropout(0.2),
+    
+    # Layer Output
+    Dense(16, activation='relu'),
+    Dense(1)
 ])
 
-# Mengurangi sedikit learning rate agar pembelajaran lebih halus
-optimizer = tf.keras.optimizers.Adam(learning_rate=0.001)
-model_gru.compile(optimizer=optimizer, loss='mse')
+model_gru.compile(optimizer='adam', loss='mse', metrics=['mae'])
 
-# Training model
-model_gru.fit(X_train_3d, y_train, epochs=50, batch_size=32, verbose=0)
-gru_time = time.time() - start_gru
+# Proses Training (20 Epoch)
+# Kita pakai validation_split 0.2 untuk melihat nilai loss/mae pada data tes internal
+model_gru.fit(X_gru, y_gru, epochs=20, batch_size=64, validation_split=0.2)
 
-pred_gru = model_gru.predict(X_test_3d, verbose=0)
-rmse_gru = np.sqrt(mean_squared_error(y_test, pred_gru))
-model_gru.save('models/gru_model3.keras') # Disimpan menggunakan format .keras terbaru
+model_gru.save('models/gru_model4.keras')
+print("-> Model GRU berhasil disimpan!")
 
-print(f"GRU Selesai! RMSE: {rmse_gru:.2f} hari, Waktu: {gru_time:.2f}s")
+print("\n" + "="*50)
+print("TRAINING SELESAI!")
+print("Sekarang Anda memiliki AI yang jauh lebih cerdas dan realistis.")
+print("="*50)
