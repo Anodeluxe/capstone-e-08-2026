@@ -25,3 +25,6 @@ frontend/.env.local
 
 # Personal todo (local only, jangan commit)
 todo.md
+
+# env
+/.env*

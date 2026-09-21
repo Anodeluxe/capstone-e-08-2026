@@ -31,7 +31,7 @@ print("=" * 60)
 # ==========================================
 print("\n1. Memuat data...")
 
-data_path = './data/processed/data_toren_hourly.csv'
+data_path = './data/processed/data_toren_hourly_v2.csv'
 if not os.path.exists(data_path):
     print(f"   ERROR: File '{data_path}' tidak ditemukan!")
     print("   Jalankan 'python data_generator_hourly.py' terlebih dahulu.")
@@ -81,8 +81,8 @@ print(f"   Test samples : {len(X_test)}")
 # ==========================================
 print("\n3. Memuat model...")
 
-model_xgb_path = 'models/xgb_model_hourly.pkl'
-model_gru_path = 'models/gru_model_hourly.keras'
+model_xgb_path = 'models/xgb_model_hourly_v2.pkl'
+model_gru_path = 'models/gru_model_hourly_v2.keras'
 
 if not os.path.exists(model_xgb_path):
     print(f"   ERROR: File '{model_xgb_path}' tidak ditemukan!")
@@ -157,6 +157,50 @@ metrics_xgb = print_metrics("XGBoost", y_test, pred_xgb)
 metrics_gru = None
 if pred_gru is not None:
     metrics_gru = print_metrics("GRU", y_gru_test, pred_gru)
+
+# ==========================================
+# 5b. SELARAS DENGAN SKOR PRODUKSI (v2)
+# ==========================================
+# Target RUL v2 berancor pada score_overall <= 60. Cek apakah model
+# "setuju" dengan momen alarm aktual: prediksi dalam toleransi +/-72 jam,
+# dan PERSIS saat skor sudah kritis (score<=60, RUL true=0) prediksi ~0.
+print("\n" + "=" * 60)
+print("KESELARASAN DENGAN SKOR PRODUKSI (v2)")
+print("=" * 60)
+
+if 'score_overall' in df.columns:
+    test_scores = df.loc[test_mask, 'score_overall'].values
+    already_bad = (y_test == 0)
+    actual_bad = (test_scores[already_bad] <= 60).mean() * 100
+
+    def score_agreement(y_true, y_pred, tol=72):
+        return float(np.mean(np.abs(y_pred - y_true) <= tol) * 100)
+
+    def alarm_agreement(y_true, y_pred):
+        return float(np.mean((y_pred <= 72) == (y_true <= 72)) * 100)
+
+    print(f"\n   Target v2 = jam sampai score_overall <= 60.")
+    print(f"   Baris dengan skor aktual<=60 selalu RUL true=0: {actual_bad:.1f}% sesuai.")
+
+    print(f"\n[ XGBoost ]")
+    print(f"   ±72 jam (3 hari) agreement : {score_agreement(y_test, pred_xgb):.1f}%")
+    print(f"   Alarm-agreement (RUL<=72h)  : {alarm_agreement(y_test, pred_xgb):.1f}%")
+    if already_bad.any():
+        print(f"   Prediksi RUL saat ALARM      : "
+              f"{pred_xgb[already_bad].mean():.1f} jam (idealnya ≈ 0)")
+
+    if pred_gru is not None:
+        # GRU: windows dibuat dari X_test (target shift = window_size).
+        yg_true = y_gru_test
+        bad_mask_g = yg_true == 0
+        print(f"\n[ GRU ]")
+        print(f"   ±72 jam (3 hari) agreement : {score_agreement(yg_true, pred_gru):.1f}%")
+        print(f"   Alarm-agreement (RUL<=72h)  : {alarm_agreement(yg_true, pred_gru):.1f}%")
+        if bad_mask_g.any():
+            print(f"   Prediksi RUL saat ALARM      : "
+                  f"{pred_gru[bad_mask_g].mean():.1f} jam (idealnya ≈ 0)")
+else:
+    print("\n   (kolom score_overall tidak ada di data ini, metrik dilewati)")
 
 # ==========================================
 # 6. REKOMENDASI

@@ -7,8 +7,8 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Input, GRU, Dense, Dropout
 
 print("1. Memuat Dataset Time-Series (Granularity: Per Jam)...")
-# Membaca file hasil generate dari data_generator_hourly.py
-df = pd.read_csv('./data/processed/data_toren_hourly.csv')
+# Membaca file hasil generate dari data_generator_hourly.py (v2: RUL berancor skor)
+df = pd.read_csv('./data/processed/data_toren_hourly_v2.csv')
 
 fitur_x = [
     'elapsed_hours', 'ph', 'tds', 'turbidity', 'temperature',
@@ -63,7 +63,7 @@ model_xgb = XGBRegressor(
 )
 model_xgb.fit(X_xgb, y_xgb)
 
-joblib.dump(model_xgb, 'models/xgb_model_hourly.pkl')
+joblib.dump(model_xgb, 'models/xgb_model_hourly_v2.pkl')
 print("-> Model XGBoost berhasil disimpan!")
 
 # ==========================================
@@ -92,13 +92,13 @@ model_gru.compile(optimizer='adam', loss='mse', metrics=['mae'])
 # Kita pakai validation_split 0.2 untuk melihat nilai loss/mae pada data tes internal
 model_gru.fit(X_gru, y_gru, epochs=20, batch_size=1024, validation_split=0.2)
 
-model_gru.save('models/gru_model_hourly.keras')
+model_gru.save('models/gru_model_hourly_v2.keras')
 print("-> Model GRU berhasil disimpan!")
 
 print("\n" + "="*50)
 print("TRAINING SELESAI!")
 print("Model tersimpan:")
-print("  - models/xgb_model_hourly.pkl  (XGBoost)")
-print("  - models/gru_model_hourly.keras (GRU)")
+print("  - models/xgb_model_hourly_v2.pkl  (XGBoost)")
+print("  - models/gru_model_hourly_v2.keras (GRU)")
 print("="*50)
 print("\nLangkah selanjutnya: jalankan 'python evaluate_model.py'")
