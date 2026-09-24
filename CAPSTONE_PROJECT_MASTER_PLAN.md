@@ -296,11 +296,18 @@ capstone-e-08-2026/
 4. **Banner Peringatan Dini EWS (`frontend/components/dashboard/AlertBanner.tsx`)** [SELESAI]:
    Banner amber dengan hitung mundur hari tersisa RUL ($\le 10$ hari) terhubung ke API prediksi, persentase keyakinan model, dan rekomendasi penjadwalan pembersihan toren.
 
-### 5.6 Sistem Notifikasi Darurat (Email & WhatsApp Fonnte)
-1. **Kanal Email (SMTP)**:
-   Mengirim laporan insiden anomali mendadak beserta nilai sensor terkait.
-2. **Kanal WhatsApp (Fonnte API)**:
-   Mengirim notifikasi instan langsung ke nomor WhatsApp pemilik rumah tangga saat terdeteksi kontaminasi air mendadak atau sisa hari pengurasan $\le 10$ hari.
+### 5.6 Sistem Notifikasi Darurat (Email & WAHA: WhatsApp HTTP API) [SELESAI]
+1. **Kanal WhatsApp (WAHA: WhatsApp HTTP API — Primer)**:
+   - Integrasi REST API WAHA (`POST /api/sendText`) pada `backend/app/services/notification_service.py`.
+   - Normalisasi nomor telepon otomatis (mengonversi format lokal `08xxx` menjadi `628xxx@c.us`, mempertahankan ID grup `@g.us`).
+   - Dukungan otentikasi header `X-Api-Key`, pemilihan session dinamis (default `default`), dan fallback ke Fonnte API jika diinginkan (`whatsapp_provider: "waha" | "fonnte"`).
+   - Templat pesan dengan pemformatan markdown WhatsApp (*bold*, _italic_, kode, emoji visual) untuk 3 pemicu:
+     - Katup ditutup otomatis (`valve_closed`).
+     - Lonjakan/penurunan anomali kontaminasi mendadak (`sudden_change`).
+     - Peringatan dini hitung mundur hari degradasi toren EWS $\le 10$ hari (`early_warning`).
+   - Endpoint status dan uji coba notifikasi: `GET /api/v1/notifications/status`, `POST /api/v1/notifications/test`, dan `POST /api/v1/notifications/trigger-ews`.
+2. **Kanal Email (SMTP)**:
+   - Pengiriman laporan ringkasan anomali menggunakan `fastapi-mail` ke alamat email penanggung jawab toren.
 
 ---
 

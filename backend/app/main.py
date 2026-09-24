@@ -86,13 +86,14 @@ app.add_middleware(
 
 # ─── REST API Routers ──────────────────────────────────────────────────────────
 
-from app.api.v1 import auth, dashboard, predictions, sensors, valves  # noqa: E402
+from app.api.v1 import auth, dashboard, notifications, predictions, sensors, valves  # noqa: E402
 
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(sensors.router, prefix="/api/v1")
 app.include_router(valves.router, prefix="/api/v1")
 app.include_router(predictions.router, prefix="/api/v1")
 app.include_router(dashboard.router, prefix="/api/v1")
+app.include_router(notifications.router, prefix="/api/v1")
 
 
 # ─── WebSocket endpoint ────────────────────────────────────────────────────────

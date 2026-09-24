@@ -40,10 +40,14 @@ class Settings(BaseSettings):
     mail_starttls: bool = True
     mail_ssl_tls: bool = False
 
-    # ── WhatsApp (Fonnte) ─────────────────────────────────────────────────────
+    # ── WhatsApp (WAHA / Fonnte) ──────────────────────────────────────────────
+    whatsapp_provider: str = "waha"  # "waha" | "fonnte"
+    waha_base_url: str = "http://localhost:3000"
+    waha_api_key: str = ""
+    waha_session: str = "default"
     fonnte_api_key: str = ""
     fonnte_api_url: str = "https://api.fonnte.com/send"
-    notif_whatsapp_targets: str = ""  # "628xxx,628yyy"
+    notif_whatsapp_targets: str = ""  # "628xxx,628yyy" or "08xxx"
 
     # ── Scoring weights ───────────────────────────────────────────────────────
     weight_ph: float = 0.30
@@ -53,7 +57,7 @@ class Settings(BaseSettings):
 
     # ── Alert thresholds ──────────────────────────────────────────────────────
     sudden_change_threshold: float = 20.0  # score-point drop = sudden anomaly
-    early_warning_days: int = 3            # days before unfit = send warning
+    early_warning_days: int = 10           # days before unfit = send early warning alert
 
     # ── Auth ──────────────────────────────────────────────────────────────────
     api_key: str = ""  # Empty = auth disabled (dev mode); set in production
