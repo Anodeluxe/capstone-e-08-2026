@@ -20,7 +20,7 @@ from app.core.websocket_manager import ws_manager
 from app.models.sensor_reading import SensorReading
 from app.models.valve import PredictionResult
 from app.services.notification_service import send_early_warning_notification
-from app.services.prediction_service import predict_eta
+from app.services.prediction_service import predict_eta, predict_rul_from_readings
 
 settings = get_settings()
 
@@ -62,7 +62,14 @@ async def run_prediction_job() -> None:
     async with AsyncSessionLocal() as db:
         since = datetime.utcnow() - timedelta(hours=72)
         result = await db.execute(
-            select(SensorReading.timestamp, SensorReading.score_overall)
+            select(
+                SensorReading.timestamp,
+                SensorReading.score_overall,
+                SensorReading.ph,
+                SensorReading.tds,
+                SensorReading.turbidity,
+                SensorReading.temperature,
+            )
             .where(SensorReading.timestamp >= since)
             .where(SensorReading.score_overall.isnot(None))
             .order_by(SensorReading.timestamp.asc())
@@ -73,14 +80,23 @@ async def run_prediction_job() -> None:
         print("[Scheduler] Not enough data for prediction — skipping.")
         return
 
-    timestamps = [r[0] for r in rows]
-    scores = [r[1] for r in rows]
+    readings = [
+        {
+            "timestamp": r[0],
+            "score_overall": r[1],
+            "ph": r[2],
+            "tds": r[3],
+            "turbidity": r[4],
+            "temperature": r[5],
+        }
+        for r in rows
+    ]
 
-    prediction = predict_eta(timestamps, scores)
+    prediction = predict_rul_from_readings(readings)
 
     days_until = prediction.get("days_until_threshold")
     predicted_date = prediction.get("predicted_date")
-    current_score = scores[-1]
+    current_score = rows[-1][1]
 
     # ── Persist prediction ────────────────────────────────────────────────────
     async with AsyncSessionLocal() as db:

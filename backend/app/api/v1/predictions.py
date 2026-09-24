@@ -9,7 +9,7 @@ from app.core.database import get_db
 from app.models.sensor_reading import SensorReading
 from app.models.valve import PredictionResult
 from app.schemas.valve import PredictionResultOut
-from app.services.prediction_service import predict_eta
+from app.services.prediction_service import predict_eta, predict_rul_from_readings
 
 router = APIRouter(prefix="/predictions", tags=["Predictions"])
 settings = get_settings()
@@ -38,7 +38,14 @@ async def run_prediction_now(
     """
     since = datetime.utcnow() - timedelta(hours=hours)
     result = await db.execute(
-        select(SensorReading.timestamp, SensorReading.score_overall)
+        select(
+            SensorReading.timestamp,
+            SensorReading.score_overall,
+            SensorReading.ph,
+            SensorReading.tds,
+            SensorReading.turbidity,
+            SensorReading.temperature,
+        )
         .where(SensorReading.timestamp >= since)
         .where(SensorReading.score_overall.isnot(None))
         .order_by(SensorReading.timestamp.asc())
@@ -48,10 +55,19 @@ async def run_prediction_now(
     if not rows:
         return {"error": "Not enough data for prediction.", "data_points": 0}
 
-    timestamps = [r[0] for r in rows]
-    scores = [r[1] for r in rows]
+    readings = [
+        {
+            "timestamp": r[0],
+            "score_overall": r[1],
+            "ph": r[2],
+            "tds": r[3],
+            "turbidity": r[4],
+            "temperature": r[5],
+        }
+        for r in rows
+    ]
 
-    prediction = predict_eta(timestamps, scores)
+    prediction = predict_rul_from_readings(readings)
 
     # Persist the result
     pred_row = PredictionResult(

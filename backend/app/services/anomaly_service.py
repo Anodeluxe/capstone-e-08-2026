@@ -48,7 +48,7 @@ def detect_sudden_change(
 
     score_drop = previous_score - current_score
 
-    if score_drop < settings.sudden_change_threshold:
+    if score_drop <= settings.sudden_change_threshold:
         # No sudden overall drop — check individual parameters
         param_anomaly = _check_parameter_deltas(current_reading, previous_reading)
         if param_anomaly:

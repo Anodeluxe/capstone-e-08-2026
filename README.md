@@ -156,10 +156,11 @@ capstone-e-08-2026/
 │   ├── tests/                   Unit tests
 │   ├── .env.example             Copy this to .env
 │   └── requirements.txt         Python dependencies
-├── frontend/                    Next.js dashboard (TODO)
+├── frontend/                    Next.js PWA dashboard
+├── firmware/esp32/              PlatformIO & Arduino firmware (EWMA filter, temp-compensated level, offline logging)
 ├── mosquitto/config/            MQTT broker config
 ├── docker-compose.yml           Infrastructure (DB + Redis + MQTT)
-└── esp32_reference/             Arduino firmware reference
+└── CAPSTONE_PROJECT_MASTER_PLAN.md Master blueprint & scoring registry
 ```
 
 ---

@@ -169,3 +169,35 @@ class TestCustomThreshold:
         d75 = result_75.get("days_until_threshold")
         if d60 is not None and d75 is not None:
             assert d75 < d60
+
+
+# ─── XGBoost RUL from Readings ────────────────────────────────────────────────
+
+class TestXGBoostRulPrediction:
+    def test_insufficient_readings(self):
+        from app.services.prediction_service import predict_rul_from_readings
+        res = predict_rul_from_readings([])
+        assert res["days_until_threshold"] is None
+        assert res["confidence"] == 0.0
+
+    def test_valid_readings_prediction(self):
+        from app.services.prediction_service import predict_rul_from_readings
+        now = datetime.utcnow()
+        readings = [
+            {
+                "timestamp": now - timedelta(hours=i),
+                "ph": 7.2 - 0.01 * i,
+                "tds": 180.0 + 1.0 * i,
+                "turbidity": 1.5 + 0.05 * i,
+                "temperature": 27.0,
+                "score_overall": max(65.0, 95.0 - 0.8 * i),
+            }
+            for i in range(24, -1, -1)
+        ]
+        res = predict_rul_from_readings(readings)
+        assert "days_until_threshold" in res
+        assert "predicted_date" in res
+        assert "is_early_warning_active" in res
+        assert isinstance(res["is_early_warning_active"], bool)
+        assert res["days_until_threshold"] is not None
+        assert res["days_until_threshold"] >= 0.0
