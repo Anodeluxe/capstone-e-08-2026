@@ -1,0 +1,30 @@
+{
+  "feature_columns": [
+    "elapsed_hours",
+    "ph_raw",
+    "tds_raw",
+    "turbidity_raw",
+    "temperature_raw",
+    "score_overall",
+    "score_drop_24",
+    "score_drop_72",
+    "score_drop_168",
+    "score_MA_24",
+    "score_MA_72",
+    "score_STD_24",
+    "turbidity_raw_MA24",
+    "tds_raw_MA24",
+    "ph_raw_MA24",
+    "turbidity_raw_drop24",
+    "tds_raw_drop24",
+    "ph_raw_drop24",
+    "turbidity_raw_drop72",
+    "tds_raw_drop72",
+    "ph_raw_drop72",
+    "hour_of_day"
+  ],
+  "target_cap_hours": 720,
+  "score_threshold": 60.0,
+  "training_dataset": "data_toren_hourly_v2.csv",
+  "feature_version": "v2_horizon_30d"
+}
