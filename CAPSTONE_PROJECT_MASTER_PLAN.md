@@ -263,35 +263,38 @@ capstone-e-08-2026/
    Jika jaringan Wi-Fi atau MQTT terputus, data sensor tetap tersimpan ke kartu MicroSD dengan format CSV (`/offline_telemetry.csv`) sehingga tidak ada rekaman hilang saat pengujian jangka panjang.
 
 ### 5.3 Basis Data & Backend Cloud (FastAPI + TimescaleDB)
-1. **Perbaikan Unit Test Anomaly Service**:
-   Perbaiki baris 51 pada `backend/app/services/anomaly_service.py` dari `<` menjadi `<=` agar seluruh 71 pengujian unit lolos (100% passed).
+1. **Perbaikan Unit Test Anomaly Service** [SELESAI]:
+   Perbaiki baris 51 pada `backend/app/services/anomaly_service.py` dari `<` menjadi `<=` sehingga seluruh 71 pengujian unit lolos (100% passed).
 2. **Inisialisasi TimescaleDB Hypertable**:
    Memastikan saat startup dijalankan instruksi DDL:
    ```sql
    CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;
    SELECT create_hypertable('sensor_readings', 'timestamp', if_not_exists => TRUE);
    ```
-3. **Otentikasi Pengguna & Proteksi Override**:
-   - Bangun `backend/app/core/security.py` menggunakan `passlib[bcrypt]` dan `python-jose` untuk JWT.
-   - Buat endpoint `POST /api/v1/auth/login`.
-   - Lindungi endpoint `POST /api/v1/valves/{id}/override` agar mencatat ID pengguna dan alasan intervensi.
+3. **Otentikasi Pengguna & Proteksi Override** [SELESAI]:
+   - Membangun `backend/app/core/security.py` menggunakan standard library `hashlib.pbkdf2_hmac` dan `python-jose` untuk JWT.
+   - Endpoint `POST /api/v1/auth/login` dan `GET /api/v1/auth/me` terdaftar di `backend/app/api/v1/auth.py`.
+   - Melindungi endpoint `POST /api/v1/valves/{id}/command` dengan ekstraksi identitas operator via JWT (dengan dev-mode fallback), mencatat `user_id` dan `reason` ke `valve_override_logs`.
+   - Mengembangkan skrip simulator hardware ESP32 lengkap `backend/scripts/simulate_esp32.py` (skenario normal, gradual, spike, interactive) beserta uji otomatis di `backend/tests/test_simulator.py`.
 
 ### 5.4 Machine Learning & Early Warning System (Inference Pipeline)
-1. **Pemuatan Bundle Model Pulled**:
-   - Membaca `xgb_model_hourly_v2_horizon.pkl` menggunakan `joblib`.
-   - Menyiapkan modul `build_inference_features()` untuk menyusun 22 fitur kausal dari riwayat data sensor 7 hari terakhir pada basis data.
-2. **Eksekusi Penjadwal Terjadwal (Hourly Job)**:
-   - APScheduler pada `backend/app/tasks/scheduler.py` mengeksekusi inferensi setiap 1 jam.
+1. **Pemuatan Bundle Model Pulled** [SELESAI]:
+   - Membaca `xgb_model_hourly_v2_horizon.pkl` (horizon 30 hari, 22 fitur kausal) menggunakan `joblib` dan `xgboost>=2.0.0,<3.0.0`.
+   - Mengintegrasikan fungsi `predict_rul_from_readings()` ke `backend/app/services/prediction_service.py`.
+2. **Eksekusi Penjadwal Terjadwal (Hourly Job)** [SELESAI]:
+   - APScheduler pada `backend/app/tasks/scheduler.py` dan endpoint `backend/app/api/v1/predictions.py` mengeksekusi inferensi multi-parameter (pH, TDS, turbiditas, suhu).
    - Nilai estimasi RUL (jam) dikonversi menjadi sisa hari.
-   - Jika $\text{RUL} \le 10\text{ hari}$, tandai status `is_early_warning_active = True` dan kirimkan peringatan dini.
+   - Jika $\text{RUL} \le 10\text{ hari}$, tandai peringatan dini dan simpan ke basis data.
 
 ### 5.5 Dashboard Antarmuka Pengguna (Progressive Web App - PWA)
-1. **Web App Manifest (`frontend/public/manifest.json`)**:
-   Konfigurasi metadata aplikasi PWA agar dapat diinstal di smartphone pengguna.
-2. **Service Worker (`frontend/public/sw.js`)**:
-   Caching aset statis untuk performa instan tanpa bergantung koneksi stabil.
-3. **Modal Manual Override**:
-   Menyediakan formulir alasan intervensi manual sebelum perintah pembukaan katup darurat dieksekusi.
+1. **Web App Manifest (`frontend/public/manifest.json`)** [SELESAI]:
+   Konfigurasi metadata aplikasi PWA (nama, tema `#0891b2`, latar belakang `#0f172a`, ikon 192px dan 512px) terhubung di `frontend/app/layout.tsx`.
+2. **Service Worker (`frontend/public/sw.js`)** [SELESAI]:
+   Caching app shell secara offline, strategi network-first untuk navigasi, dan penanganan event Web Push notification. Komponen pendaftaran otomatis `frontend/components/PwaRegister.tsx`.
+3. **Modal Manual Override (`frontend/components/valves/OverrideModal.tsx`)** [SELESAI]:
+   Menyediakan tombol cepat preset alasan (`Pembersihan toren rutin`, `Pengujian katup`, `Kebutuhan mendesak`, `Kuras air terkontaminasi`), peringatan interlock risiko kesehatan saat membuka katup, dan audit trail.
+4. **Banner Peringatan Dini EWS (`frontend/components/dashboard/AlertBanner.tsx`)** [SELESAI]:
+   Banner amber dengan hitung mundur hari tersisa RUL ($\le 10$ hari) terhubung ke API prediksi, persentase keyakinan model, dan rekomendasi penjadwalan pembersihan toren.
 
 ### 5.6 Sistem Notifikasi Darurat (Email & WhatsApp Fonnte)
 1. **Kanal Email (SMTP)**:

@@ -1,8 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from typing import Optional
+
 from app.core.auth import verify_api_key
 from app.core.database import get_db
+from app.core.security import UserOut, get_current_user_optional
 from app.core.websocket_manager import ws_manager
 from app.mqtt.client import mqtt_client
 from app.schemas.valve import ValveCommandRequest, ValveOverrideLogOut, ValveStateOut
@@ -38,22 +41,28 @@ async def send_valve_command(
     body: ValveCommandRequest,
     db: AsyncSession = Depends(get_db),
     api_key: str = Depends(verify_api_key),
+    current_user: Optional[UserOut] = Depends(get_current_user_optional),
 ):
     """
     Manual override — open or close a specific valve.
-    Requires X-API-Key header (unless API_KEY is empty in settings).
+    Requires Bearer JWT token or X-API-Key header (falls back to operator_local).
     """
     if valve_id not in VALID_VALVE_IDS:
         raise HTTPException(status_code=400, detail=f"Invalid valve_id: {valve_id}")
 
-    triggered_by = f"user:{api_key}" if api_key != "anonymous" else "user:anonymous"
+    if current_user:
+        triggered_by = f"user:{current_user.username}"
+    elif api_key != "anonymous":
+        triggered_by = f"user:{api_key}"
+    else:
+        triggered_by = "user:operator_local"
 
     valve = await execute_valve_command(
         db=db,
         valve_id=valve_id,
         action=body.action,
         triggered_by=triggered_by,
-        reason=body.reason,
+        reason=body.reason or "Manual dashboard override",
         mqtt_client=mqtt_client,
     )
 

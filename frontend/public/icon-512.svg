@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="96" fill="#0f172a"/>
+  <!-- Outer subtle ring -->
+  <circle cx="256" cy="256" r="202" stroke="#1e293b" stroke-width="10" fill="none"/>
+  <!-- Hexagonal / tank motif -->
+  <rect x="138" y="154" width="236" height="204" rx="36" fill="#0891b2" fill-opacity="0.15" stroke="#0891b2" stroke-width="10"/>
+  <!-- Droplet path inside -->
+  <path d="M256 176 C256 176 197 261 197 298 C197 330.6 223.4 357 256 357 C288.6 357 315 330.6 315 298 C315 261 256 176 256 176 Z" fill="#0891b2"/>
+  <!-- Highlight on droplet -->
+  <path d="M235 288 C235 272 245 256 253 248" stroke="#e0f2fe" stroke-width="8" stroke-linecap="round" fill="none"/>
+  <!-- Waves icon underneath -->
+  <path d="M170 400 C197 390 229 410 256 400 C283 390 315 410 342 400" stroke="#06b6d4" stroke-width="9" stroke-linecap="round" fill="none"/>
+</svg>

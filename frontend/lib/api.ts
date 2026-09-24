@@ -16,6 +16,17 @@ const api = axios.create({
   timeout: 10_000,
 })
 
+// Attach JWT access token if present
+api.interceptors.request.use((config) => {
+  if (typeof window !== 'undefined') {
+    const token = localStorage.getItem('token') || sessionStorage.getItem('token')
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`
+    }
+  }
+  return config
+})
+
 // Sensors
 export const sensorsApi = {
   latest: () =>
@@ -73,6 +84,19 @@ export const dashboardApi = {
 export const healthApi = {
   check: () =>
     api.get<HealthStatus>('/health').then((r) => r.data),
+}
+
+// Auth
+export const authApi = {
+  login: (credentials: { username: string; password: string }) =>
+    api
+      .post<{ access_token: string; token_type: string }>('/auth/login', credentials)
+      .then((r) => r.data),
+
+  me: () =>
+    api
+      .get<{ id: string; username: string; role: string }>('/auth/me')
+      .then((r) => r.data),
 }
 
 export default api
