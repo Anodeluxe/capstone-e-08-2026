@@ -20,7 +20,7 @@ from app.core.websocket_manager import ws_manager
 from app.models.sensor_reading import SensorReading
 from app.models.valve import PredictionResult
 from app.services.notification_service import send_early_warning_notification
-from app.services.prediction_service import predict_eta, predict_rul_from_readings
+from app.services.ml_prediction_service import predict_hybrid
 
 settings = get_settings()
 
@@ -54,8 +54,8 @@ def stop_scheduler() -> None:
 
 async def run_prediction_job() -> None:
     """
-    Fetch last 72h of score data, run prediction, persist result,
-    and send early warning notification if ETA ≤ EARLY_WARNING_DAYS.
+    Fetch last 72h of sensor + score data, run hybrid prediction
+    (ML XGBoost horizon + regression fallback), persist, and notify.
     """
     print(f"[Scheduler] Running prediction job at {datetime.utcnow().isoformat()}")
 
@@ -80,25 +80,22 @@ async def run_prediction_job() -> None:
         print("[Scheduler] Not enough data for prediction — skipping.")
         return
 
-    readings = [
-        {
-            "timestamp": r[0],
-            "score_overall": r[1],
-            "ph": r[2],
-            "tds": r[3],
-            "turbidity": r[4],
-            "temperature": r[5],
-        }
-        for r in rows
-    ]
+    timestamps = [r[0] for r in rows]
+    scores = [r[1] for r in rows]
 
-    prediction = predict_rul_from_readings(readings)
+    async with AsyncSessionLocal() as db:
+        prediction = await predict_hybrid(
+            db,
+            timestamps=timestamps,
+            scores=scores,
+            elapsed_fraction=settings.ml_elapsed_fraction,
+            overall_scores=scores,
+        )
 
     days_until = prediction.get("days_until_threshold")
     predicted_date = prediction.get("predicted_date")
-    current_score = rows[-1][1]
+    current_score = scores[-1]
 
-    # ── Persist prediction ────────────────────────────────────────────────────
     async with AsyncSessionLocal() as db:
         pred_row = PredictionResult(
             computed_at=datetime.utcnow(),
@@ -108,13 +105,13 @@ async def run_prediction_job() -> None:
             predicted_date=predicted_date,
             confidence=prediction.get("confidence"),
             model_used=prediction.get("model_used", "unknown"),
+            rul_hours=prediction.get("rul_hours"),
             notification_sent=False,
         )
         db.add(pred_row)
         await db.commit()
         await db.refresh(pred_row)
 
-        # ── Send early warning if threshold approaching ───────────────────────
         should_warn = (
             days_until is not None
             and days_until <= settings.early_warning_days
@@ -131,7 +128,6 @@ async def run_prediction_job() -> None:
             pred_row.notification_sent = True
             await db.commit()
 
-            # Broadcast alert to frontend
             await ws_manager.broadcast_alert(
                 alert_type="early_warning",
                 message=f"Water quality predicted to be unfit in {days_until:.1f} days",

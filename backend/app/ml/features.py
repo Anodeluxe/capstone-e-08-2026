@@ -1,87 +1,112 @@
 """
-ML Feature Pipeline
-───────────────────
-Bridges raw sensor data in TimescaleDB with the trained ML model.
+ML Feature Pipeline — v2 Horizon (early-warning 30 hari)
+═══════════════════════════════════════════════════════
 
-Functions:
-  - aggregate_hourly_readings()  — 360 raw rows → 1 hourly row
-  - build_feature_matrix()       — 4 raw cols → 12 ML features
-  - load_models()                — singleton loader for scaler + XGBoost
+Membangun matriks fitur produksi yang **identik dengan pelatihan** model
+`xgb_model_hourly_v2_horizon.pkl`.
+
+Kontrak penting:
+  - FEATURE_COLUMNS di bawah harus SELALU cocok urutan/jumlahnya dengan
+    `feature_columns` di metadata model — jangan diubah sembarangan.
+  - Model dilatih di NILAI MENTAH (raw + score_overall) — TIDAK butuh scaler.
+  - Semua fitur rolling/drop dihitung KASUAL per Cycle_ID (reset di tiap
+    siklus baru, hanya memakai masa lalu), jadi aman dipakai di inferensi
+    produksi tanpa bocor data masa depan.
 """
 
 import os
-from datetime import datetime, timedelta
-from functools import lru_cache
+from dataclasses import dataclass
+from datetime import datetime
 
 import joblib
 import numpy as np
 import pandas as pd
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.sensor_reading import SensorReading
 
-# ── Path to model artifacts ──────────────────────────────────────────────────
+# ── Lokasi artifact model (bundle v2-horizon) ─────────────────────────────────
 _ML_DIR = os.path.dirname(os.path.abspath(__file__))
-_SCALER_PATH = os.path.join(_ML_DIR, "models", "scaler_hourly.pkl")
-_XGB_PATH = os.path.join(_ML_DIR, "models", "xgb_model_hourly.pkl")
+_MODELS_DIR = os.path.join(_ML_DIR, "models")
+_XGB_BUNDLE_PATH = os.path.join(_MODELS_DIR, "xgb_model_hourly_v2_horizon.pkl")
 
-# ── Feature order (must match training exactly) ──────────────────────────────
+# Daftar fitur TEPAT seperti metadata bundle (jangan ubah urutan!)
 FEATURE_COLUMNS = [
-    "elapsed_hours", "ph", "tds", "turbidity", "temperature",
-    "ph_MA_24", "tds_MA_24", "turbidity_MA_24",
+    "elapsed_hours",
+    "ph_raw",
+    "tds_raw",
+    "turbidity_raw",
+    "temperature_raw",
+    "score_overall",
+    "score_drop_24",
+    "score_drop_72",
+    "score_drop_168",
+    "score_MA_24",
+    "score_MA_72",
+    "score_STD_24",
+    "turbidity_raw_MA24",
+    "tds_raw_MA24",
+    "ph_raw_MA24",
+    "turbidity_raw_drop24",
+    "tds_raw_drop24",
+    "ph_raw_drop24",
+    "turbidity_raw_drop72",
+    "tds_raw_drop72",
+    "ph_raw_drop72",
+    "hour_of_day",
 ]
 
-# Minimum hourly rows needed to build features (need at least 1 for rolling min_periods=1)
-MIN_HOURLY_ROWS = 3
+# Minimum baris hourly agar fitur drop/history bisa dihitung
+MIN_HOURLY_ROWS = 72
+
+# Ambang alarm produksi (sama dengan generator/target & EWS)
+SCORE_THRESHOLD = 60.0
+
+# Rentang fisis sensor — nilai di luar ini di-clip, bukan untuk extrapolate
+_PHYSICAL_CLIP = {
+    "ph_raw": (3.0, 11.0),
+    "tds_raw": (10.0, 1800.0),
+    "turbidity_raw": (0.05, 65.0),
+    "temperature_raw": (20.0, 34.0),
+}
 
 
-# ── Model Loader (Singleton) ─────────────────────────────────────────────────
-_scaler = None
-_xgb_model = None
+# ── Model loader (singleton) ─────────────────────────────────────────────────
+_model_bundle = None
 
 
-def load_models():
-    """
-    Load scaler and XGBoost model once, reuse across calls.
-    Returns (scaler, model) or (None, None) if files missing.
-    """
-    global _scaler, _xgb_model
+def load_model() -> dict | None:
+    """Load bundle XGBoost (model + metadata). Sekali, di-cache."""
+    global _model_bundle
+    if _model_bundle is not None:
+        return _model_bundle
 
-    if _scaler is not None and _xgb_model is not None:
-        return _scaler, _xgb_model
-
-    if not os.path.exists(_SCALER_PATH):
-        print(f"[ML] Scaler not found: {_SCALER_PATH}")
-        return None, None
-
-    if not os.path.exists(_XGB_PATH):
-        print(f"[ML] XGBoost model not found: {_XGB_PATH}")
-        return None, None
+    if not os.path.exists(_XGB_BUNDLE_PATH):
+        print(f"[ML] Bundle model tidak ditemukan: {_XGB_BUNDLE_PATH}")
+        return None
 
     try:
-        _scaler = joblib.load(_SCALER_PATH)
-        _xgb_model = joblib.load(_XGB_PATH)
-        print("[ML] Models loaded successfully.")
-        return _scaler, _xgb_model
-    except Exception as e:
-        print(f"[ML] Failed to load models: {e}")
-        return None, None
+        with open(_XGB_BUNDLE_PATH, "rb") as fh:
+            _model_bundle = joblib.load(fh)
+        print("[ML] Bundle model v2-horizon dimuat.")
+        return _model_bundle
+    except Exception as exc:
+        print(f"[ML] Gagal memuat bundle XGBoost: {exc}")
+        return None
 
 
-# ── Hourly Aggregation ───────────────────────────────────────────────────────
+# ── Agregasi read mentah → per jam ───────────────────────────────────────────
 async def aggregate_hourly_readings(
     db: AsyncSession,
     since_datetime: datetime,
 ) -> pd.DataFrame:
     """
-    Query raw sensor readings since `since_datetime`, aggregate by hour,
-    and return a DataFrame with hourly means of ph, tds, turbidity, temperature.
+    Ambil raw sensor readings sejak `since_datetime`, agregasi per jam
+    (rata-rata ph/tds/turbidity/temperature), urut naik.
 
-    Returns columns: ['timestamp', 'ph', 'tds', 'turbidity', 'temperature']
-    sorted by timestamp ascending.
+    Hasil kolom: ['timestamp', 'ph', 'tds', 'turbidity', 'temperature']
     """
-    # Truncate timestamp to hour boundary using date_trunc
     hour_trunc = func.date_trunc("hour", SensorReading.timestamp).label("hour")
 
     stmt = (
@@ -107,58 +132,105 @@ async def aggregate_hourly_readings(
     return df
 
 
-# ── Feature Engineering ──────────────────────────────────────────────────────
+# ── Build Feature Matrix (generator mirror, versi produksi) ──────────────────
 def build_feature_matrix(
     hourly_df: pd.DataFrame,
-    elapsed_hours: float = 0.0,
+    elapsed_fraction: float = 0.0,
+    overall_scores: list[float] | None = None,
 ) -> pd.DataFrame | None:
     """
-    Given an hourly DataFrame (from aggregate_hourly_readings), compute
-    the 8 ML features required by the model.
+    Dari data hourly (agregasi DB) → 22 fitur model.
 
-    elapsed_hours = jam sejak terakhir kuras (diisi oleh caller).
+    Fitur rolling (MA/drop) dihitung pada slice (single cycle). Karena
+    `elapsed_hours` di training adalah fraksi 0-1, nilai yang benar
+    di produksi juga harus 0-1.
 
-    Returns a DataFrame with FEATURE_COLUMNS, or None if insufficient data.
+    `elapsed_fraction` → posisi siklus saat ini (0.0 = baru drain, 1.0 = akhir).
     """
     if len(hourly_df) < MIN_HOURLY_ROWS:
-        print(f"[ML] Need at least {MIN_HOURLY_ROWS} hourly rows, got {len(hourly_df)}")
+        print(f"[ML] Butuh >= {MIN_HOURLY_ROWS} baris hourly, baru ada {len(hourly_df)}.")
         return None
 
-    df = hourly_df.copy()
+    df = hourly_df.sort_values("timestamp").reset_index(drop=True).copy()
 
-    # ── MA_24: rata-rata 24 jam terakhir per parameter ────────────────────
-    for col in ["ph", "tds", "turbidity"]:
-        df[f"{col}_MA_24"] = df[col].rolling(window=24, min_periods=1).mean()
+    # ── elapsed_hours sebagai fraksi (0-1) ───────────────────────────────────
+    n = max(len(df), 1)
+    df["elapsed_hours"] = np.linspace(
+        max(0.0, elapsed_fraction - (n - 1) / 2000.0),
+        min(1.0, elapsed_fraction),
+        n,
+    )
+    df["hour_of_day"] = df["timestamp"].dt.hour.astype(float)
 
-    # ── elapsed_hours: waktu terakhir kuras (dari caller, bukan dari DB) ───
-    df["elapsed_hours"] = elapsed_hours
+    # Rename raw sensor → kolom raw_*
+    for col in ("ph", "tds", "turbidity", "temperature"):
+        df[f"{col}_raw"] = df[col]
+
+    # score_overall: kalau tidak disuplai caller, fallback stabil (kualitas baik)
+    if overall_scores is None or len(overall_scores) != len(df):
+        print("[ML] score_overall tidak disuplai — pakai fallback 100 (kualitas baik).")
+        df["score_overall"] = 100.0
+    else:
+        df["score_overall"] = overall_scores
+
+    # ── Clip fisis (nilai di luar rentang sensor → clamp) ────────────────────
+    for col, (lo, hi) in _PHYSICAL_CLIP.items():
+        if col in df.columns:
+            df[col] = df[col].clip(lower=lo, upper=hi)
+
+    # ── Fitur rolling / drop (rolling dihitung pada SATU cycle berjalan) ─────
+    df["score_drop_24"] = df["score_overall"].diff(24).fillna(0.0)
+    df["score_drop_72"] = df["score_overall"].diff(72).fillna(0.0)
+    df["score_drop_168"] = df["score_overall"].diff(168).fillna(0.0)
+
+    df["score_MA_24"] = df["score_overall"].rolling(24, min_periods=1).mean()
+    df["score_MA_72"] = df["score_overall"].rolling(72, min_periods=1).mean()
+    df["score_STD_24"] = df["score_overall"].rolling(24, min_periods=1).std().fillna(0.0)
+
+    for col in ("turbidity", "tds", "ph"):
+        df[f"{col}_raw_MA24"] = df[col].rolling(24, min_periods=1).mean()
+        df[f"{col}_raw_drop24"] = df[col].diff(24).fillna(0.0)
+        df[f"{col}_raw_drop72"] = df[col].diff(72).fillna(0.0)
+
+    # Pastikan 22 kolom ada (guard); buang sisanya
+    for col in FEATURE_COLUMNS:
+        if col not in df.columns:
+            df[col] = 0.0
 
     return df[FEATURE_COLUMNS]
 
 
-# ── Full Pipeline: DB → Features ─────────────────────────────────────────────
+# ── Pipeline lengkap: DB → Features ──────────────────────────────────────────
 async def get_latest_features(
     db: AsyncSession,
     lookback_hours: int = 72,
     elapsed_hours: float = 0.0,
+    overall_scores: list[float] | None = None,
 ) -> pd.DataFrame | None:
     """
-    Convenience function: fetch last `lookback_hours` of sensor data,
-    aggregate hourly, and build feature matrix.
+    Convenience: ambil 72 jam terakhir, agregasi hourly, build feature matrix,
+    lalu return BARIS TERAKHIR (jam terbaru) berbentuk DataFrame 1-baris.
 
-    Returns the LAST ROW of the feature matrix (most recent hour),
-    or None if data is insufficient.
+    `overall_scores` → deret skor per jam sejajar dengan agregasi (dari caller).
     """
     since = datetime.utcnow() - timedelta(hours=lookback_hours)
     hourly_df = await aggregate_hourly_readings(db, since)
 
     if hourly_df.empty:
-        print("[ML] No hourly data found.")
+        print("[ML] Tidak ada data hourly.")
         return None
 
-    features = build_feature_matrix(hourly_df, elapsed_hours=elapsed_hours)
+    features = build_feature_matrix(hourly_df, elapsed_hours=elapsed_hours, overall_scores=overall_scores)
     if features is None:
         return None
 
-    # Return only the latest row (most recent hour)
     return features.iloc[[-1]].copy()
+
+
+# =============================================================================
+# MAIN (untuk uji cepat fitur sendirian)
+# =============================================================================
+if __name__ == "__main__":
+    print("Fitur produksi v2-horizon (22 kolom):")
+    for n, col in enumerate(FEATURE_COLUMNS):
+        print(f"  {n:2d}. {col}")

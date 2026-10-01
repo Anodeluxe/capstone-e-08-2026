@@ -59,6 +59,9 @@ class Settings(BaseSettings):
     sudden_change_threshold: float = 20.0  # score-point drop = sudden anomaly
     early_warning_days: int = 10           # days before unfit = send early warning alert
 
+    # ── ML / RUL ──────────────────────────────────────────────────────────────
+    ml_elapsed_fraction: float = 0.0  # posisi siklus (0.0=baru drain, 1.0=akhir)
+
     # ── Auth ──────────────────────────────────────────────────────────────────
     api_key: str = ""  # Empty = auth disabled (dev mode); set in production
 

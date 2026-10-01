@@ -9,7 +9,8 @@ from app.core.database import get_db
 from app.models.sensor_reading import SensorReading
 from app.models.valve import PredictionResult
 from app.schemas.valve import PredictionResultOut
-from app.services.prediction_service import predict_eta, predict_rul_from_readings
+from app.services.prediction_service import predict_eta
+from app.services.ml_prediction_service import predict_hybrid
 
 router = APIRouter(prefix="/predictions", tags=["Predictions"])
 settings = get_settings()
@@ -55,21 +56,17 @@ async def run_prediction_now(
     if not rows:
         return {"error": "Not enough data for prediction.", "data_points": 0}
 
-    readings = [
-        {
-            "timestamp": r[0],
-            "score_overall": r[1],
-            "ph": r[2],
-            "tds": r[3],
-            "turbidity": r[4],
-            "temperature": r[5],
-        }
-        for r in rows
-    ]
+    timestamps = [r[0] for r in rows]
+    scores = [r[1] for r in rows]
 
-    prediction = predict_rul_from_readings(readings)
+    prediction = await predict_hybrid(
+        db,
+        timestamps=timestamps,
+        scores=scores,
+        elapsed_fraction=settings.ml_elapsed_fraction,
+        overall_scores=scores,
+    )
 
-    # Persist the result
     pred_row = PredictionResult(
         computed_at=datetime.utcnow(),
         target_parameter="score_overall",

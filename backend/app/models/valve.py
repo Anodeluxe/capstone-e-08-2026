@@ -85,6 +85,7 @@ class PredictionResult(Base):
     predicted_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)  # 0.0–1.0
     model_used: Mapped[str] = mapped_column(String(50), default="linear_regression")
+    rul_hours: Mapped[float | None] = mapped_column(Float, nullable=True)  # RUL in hours from ML model
     notification_sent: Mapped[bool] = mapped_column(Boolean, default=False)
 
     def to_dict(self) -> dict:
@@ -97,5 +98,6 @@ class PredictionResult(Base):
             "predicted_date": self.predicted_date.isoformat() if self.predicted_date else None,
             "confidence": self.confidence,
             "model_used": self.model_used,
+            "rul_hours": self.rul_hours,
             "notification_sent": self.notification_sent,
         }
