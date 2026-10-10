@@ -13,9 +13,8 @@ Keputusan desain (mengikuti catatan fase peninjauan):
 2. Bila memori fitur belum cukup (jam < MIN_HOURLY_ROWS=72) ATAU `score_overall`
    tidak tersedia, kita FALLBACK ke regresi ETA lama (predict_eta) — model
    linear/polynomial yang sudah dipakai predictions.py & scheduler.
-3. Bila `elapsed_hours` belum tersedia dari drain_log/config, caller wajib
-   menyuplai posisi jam-siklus (default 0). Produksi memakai `elapsed_hours`
-   dari source (lihat config `ML_ELAPSED_HOURS_SOURCE`).
+3. `elapsed_fraction` diambil dari `DrainLog` via `MLConfig` (DB-backed).
+   Model dilatih dengan `elapsed_hours` normalisasi [0, 1] = fraksi siklus.
 
 Service ini TIDAK menyentuh jalur lama — hanya menambah jalur prioritas-ML
 di depan `predict_eta`.
@@ -37,6 +36,7 @@ from app.ml.features import (
     build_feature_matrix,
     load_model as load_xgb_bundle,
 )
+from app.services.ml_config import get_elapsed_fraction
 
 # Ambang saat produksi memutuskan memakai XGBoost (dibawahnya = kritis/degrading)
 SCORE_LOOKS_DEGRADING = 60.0
@@ -79,7 +79,7 @@ def _rul_to_display(rul_hours: float) -> dict[str, Any]:
 async def predict_rul_ml(
     db: AsyncSession,
     lookback_hours: int = 72,
-    elapsed_hours: float = 0.0,
+    elapsed_fraction: float | None = None,
     overall_scores: list[float] | None = None,
 ) -> dict[str, Any] | None:
     """
@@ -87,6 +87,9 @@ async def predict_rul_ml(
 
     Mengembalikan dict hasil, atau `None` bila data/model belum siap
     (caller harus fallback ke predict_eta).
+
+    `elapsed_fraction` → fraksi siklus [0.0, 1.0] dari `MLConfig` (DB-backed).
+    Bila `None`, akan diambil otomatis dari `DrainLog` via `MLConfig`.
 
     `overall_scores` → deret skor per jam (produksi memproduksi lewat
     scoring_service). Bila `None`, model tetap bisa jalan dengan skor
@@ -97,10 +100,14 @@ async def predict_rul_ml(
         print("[ML] Bundle XGBoost tidak tersedia → fallback regresi.")
         return None
 
+    # Get elapsed fraction from DB-backed config if not provided
+    if elapsed_fraction is None:
+        elapsed_fraction = await get_elapsed_fraction(db)
+
     features_df = await get_latest_features_async(
         db,
         lookback_hours=lookback_hours,
-        elapsed_hours=elapsed_hours,
+        elapsed_fraction=elapsed_fraction,
         overall_scores=overall_scores,
     )
     if features_df is None or features_df.empty:
@@ -130,14 +137,14 @@ async def predict_rul_ml(
 async def get_latest_features_async(
     db: AsyncSession,
     lookback_hours: int = 72,
-    elapsed_hours: float = 0.0,
+    elapsed_fraction: float = 0.0,
     overall_scores: list[float] | None = None,
 ) -> pd.DataFrame | None:
     """
     Bungkus pipeline produksi: ambil raw readings → agregasi hourly → build
     feature matrix. Return baris TERAKHIR (DataFrame 1-baris) atau None.
 
-    Menerima `elapsed_hours` (posisi jam-siklus dari drain source) dan
+    Menerima `elapsed_fraction` (fraksi siklus 0.0–1.0) dan
     `overall_scores` (deret skor per jam, sejajar agregasi DB).
     """
     from app.ml.features import get_latest_features
@@ -145,7 +152,7 @@ async def get_latest_features_async(
     return await get_latest_features(
         db,
         lookback_hours=lookback_hours,
-        elapsed_hours=elapsed_hours,
+        elapsed_fraction=elapsed_fraction,
         overall_scores=overall_scores,
     )
 
@@ -168,7 +175,7 @@ async def predict_hybrid(
     db: AsyncSession,
     timestamps: list[datetime],
     scores: list[float],
-    elapsed_hours: float = 0.0,
+    elapsed_fraction: float | None = None,
     overall_scores: list[float] | None = None,
     threshold: float = SCORE_THRESHOLD,
 ) -> dict[str, Any]:
@@ -181,10 +188,14 @@ async def predict_hybrid(
     Return selalu dict (tidak pernah None); ada key `model_used` untuk
     memberi tahu dashboard jalur mana yang dipakai.
     """
+    # Get elapsed fraction from DB-backed config if not provided
+    if elapsed_fraction is None:
+        elapsed_fraction = await get_elapsed_fraction(db)
+
     ml_result = await predict_rul_ml(
         db,
         lookback_hours=max(lookback_hours_for_ml(), 72),
-        elapsed_hours=elapsed_hours,
+        elapsed_fraction=elapsed_fraction,
         overall_scores=overall_scores,
     )
 
@@ -199,6 +210,7 @@ async def predict_hybrid(
                 "already_below_threshold", False
             ),
             "trend_direction": "degrading",
+            "is_early_warning_active": ml_result["rul_hours"] / 24.0 <= 10.0,
         }
 
     # ML tidak bisa / RUL di luar 30 hari → regresi lama (scheduler & predictions)
@@ -207,6 +219,7 @@ async def predict_hybrid(
     fallback["model_used"] = fallback.get("model_used", MODEL_FALLBACK)
     fallback["display_hint"] = "regression_eta"
     fallback["within_30d_window"] = None
+    fallback["is_early_warning_active"] = False
     return fallback
 
 

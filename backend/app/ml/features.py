@@ -16,7 +16,7 @@ Kontrak penting:
 
 import os
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import joblib
 import numpy as np
@@ -204,7 +204,7 @@ def build_feature_matrix(
 async def get_latest_features(
     db: AsyncSession,
     lookback_hours: int = 72,
-    elapsed_hours: float = 0.0,
+    elapsed_fraction: float = 0.0,
     overall_scores: list[float] | None = None,
 ) -> pd.DataFrame | None:
     """
@@ -220,7 +220,7 @@ async def get_latest_features(
         print("[ML] Tidak ada data hourly.")
         return None
 
-    features = build_feature_matrix(hourly_df, elapsed_hours=elapsed_hours, overall_scores=overall_scores)
+    features = build_feature_matrix(hourly_df, elapsed_fraction=elapsed_fraction, overall_scores=overall_scores)
     if features is None:
         return None
 

@@ -56,7 +56,7 @@ async def create_timescale_hypertable(conn):
 
 async def init_db():
     """Create all tables and set up TimescaleDB hypertable."""
-    from app.models import sensor_reading, valve, notification_log, prediction_result  # noqa: F401
+    from app.models import drain_log, sensor_reading, valve, notification_log, prediction_result  # noqa: F401
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
