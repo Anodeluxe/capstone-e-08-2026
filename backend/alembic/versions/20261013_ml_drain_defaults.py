@@ -1,0 +1,31 @@
+"""Align ML drain-cycle schema defaults.
+
+Revision ID: 20261013_ml_drain_defaults
+Revises: 2b3d279896e3
+"""
+
+from alembic import op
+
+
+revision = "20261013_ml_drain_defaults"
+down_revision = "2b3d279896e3"
+branch_labels = None
+depends_on = None
+
+
+def upgrade() -> None:
+    op.execute(
+        "ALTER TABLE drain_logs ALTER COLUMN cycle_estimate_hours SET DEFAULT 2400.0"
+    )
+    op.execute(
+        "ALTER TABLE prediction_results ADD COLUMN IF NOT EXISTS rul_hours DOUBLE PRECISION"
+    )
+
+
+def downgrade() -> None:
+    op.execute(
+        "ALTER TABLE drain_logs ALTER COLUMN cycle_estimate_hours SET DEFAULT 2000.0"
+    )
+    op.execute(
+        "ALTER TABLE prediction_results DROP COLUMN IF EXISTS rul_hours"
+    )

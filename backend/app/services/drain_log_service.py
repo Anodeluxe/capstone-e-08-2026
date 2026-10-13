@@ -24,7 +24,7 @@ from app.models.drain_log import DrainLog
 settings = get_settings()
 
 # Default cycle estimate in hours (from training data statistics)
-DEFAULT_CYCLE_ESTIMATE_HOURS = 2000.0
+DEFAULT_CYCLE_ESTIMATE_HOURS = 2400.0
 
 
 async def get_active_drain_log(db: AsyncSession) -> DrainLog | None:
@@ -153,7 +153,17 @@ async def get_cycle_statistics(db: AsyncSession) -> dict:
     durations = [
         (log.ended_at - log.started_at).total_seconds() / 3600.0
         for log in completed
+        if log.ended_at is not None and log.started_at is not None
     ]
+
+    if not durations:
+        return {
+            "total_cycles": len(logs),
+            "completed_cycles": 0,
+            "avg_cycle_hours": None,
+            "min_cycle_hours": None,
+            "max_cycle_hours": None,
+        }
 
     return {
         "total_cycles": len(logs),

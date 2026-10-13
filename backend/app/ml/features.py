@@ -58,7 +58,7 @@ FEATURE_COLUMNS = [
 ]
 
 # Minimum baris hourly agar fitur drop/history bisa dihitung
-MIN_HOURLY_ROWS = 72
+MIN_HOURLY_ROWS = 169
 
 # Ambang alarm produksi (sama dengan generator/target & EWS)
 SCORE_THRESHOLD = 60.0
@@ -89,6 +89,9 @@ def load_model() -> dict | None:
     try:
         with open(_XGB_BUNDLE_PATH, "rb") as fh:
             _model_bundle = joblib.load(fh)
+        bundle_columns = _model_bundle.get("feature_columns")
+        if bundle_columns is not None and bundle_columns != FEATURE_COLUMNS:
+            raise ValueError("Model feature_columns do not match production FEATURE_COLUMNS")
         print("[ML] Bundle model v2-horizon dimuat.")
         return _model_bundle
     except Exception as exc:
@@ -105,7 +108,7 @@ async def aggregate_hourly_readings(
     Ambil raw sensor readings sejak `since_datetime`, agregasi per jam
     (rata-rata ph/tds/turbidity/temperature), urut naik.
 
-    Hasil kolom: ['timestamp', 'ph', 'tds', 'turbidity', 'temperature']
+    Hasil kolom: ['timestamp', 'ph', 'tds', 'turbidity', 'temperature', 'score_overall']
     """
     hour_trunc = func.date_trunc("hour", SensorReading.timestamp).label("hour")
 
@@ -116,6 +119,7 @@ async def aggregate_hourly_readings(
             func.avg(SensorReading.tds).label("tds"),
             func.avg(SensorReading.turbidity).label("turbidity"),
             func.avg(SensorReading.temperature).label("temperature"),
+            func.avg(SensorReading.score_overall).label("score_overall"),
         )
         .where(SensorReading.timestamp >= since_datetime)
         .group_by(hour_trunc)
@@ -126,9 +130,9 @@ async def aggregate_hourly_readings(
     rows = result.all()
 
     if not rows:
-        return pd.DataFrame(columns=["timestamp", "ph", "tds", "turbidity", "temperature"])
+        return pd.DataFrame(columns=["timestamp", "ph", "tds", "turbidity", "temperature", "score_overall"])
 
-    df = pd.DataFrame(rows, columns=["timestamp", "ph", "tds", "turbidity", "temperature"])
+    df = pd.DataFrame(rows, columns=["timestamp", "ph", "tds", "turbidity", "temperature", "score_overall"])
     return df
 
 
@@ -156,7 +160,7 @@ def build_feature_matrix(
     # ── elapsed_hours sebagai fraksi (0-1) ───────────────────────────────────
     n = max(len(df), 1)
     df["elapsed_hours"] = np.linspace(
-        max(0.0, elapsed_fraction - (n - 1) / 2000.0),
+        max(0.0, elapsed_fraction - (n - 1) / 2400.0),
         min(1.0, elapsed_fraction),
         n,
     )
@@ -167,11 +171,16 @@ def build_feature_matrix(
         df[f"{col}_raw"] = df[col]
 
     # score_overall: kalau tidak disuplai caller, fallback stabil (kualitas baik)
-    if overall_scores is None or len(overall_scores) != len(df):
-        print("[ML] score_overall tidak disuplai — pakai fallback 100 (kualitas baik).")
+    if overall_scores is not None and len(overall_scores) == len(df):
+        df["score_overall"] = overall_scores
+    elif "score_overall" not in df:
+        print("[ML] score_overall tidak tersedia — pakai fallback 100 (kualitas baik).")
+        df["score_overall"] = 100.0
+    elif bool(df["score_overall"].isna().all()):
+        print("[ML] score_overall tidak tersedia — pakai fallback 100 (kualitas baik).")
         df["score_overall"] = 100.0
     else:
-        df["score_overall"] = overall_scores
+        df["score_overall"] = df["score_overall"].fillna(100.0)
 
     # ── Clip fisis (nilai di luar rentang sensor → clamp) ────────────────────
     for col, (lo, hi) in _PHYSICAL_CLIP.items():
@@ -197,13 +206,13 @@ def build_feature_matrix(
         if col not in df.columns:
             df[col] = 0.0
 
-    return df[FEATURE_COLUMNS]
+    return pd.DataFrame(df.loc[:, FEATURE_COLUMNS])
 
 
 # ── Pipeline lengkap: DB → Features ──────────────────────────────────────────
 async def get_latest_features(
     db: AsyncSession,
-    lookback_hours: int = 72,
+    lookback_hours: int = 169,
     elapsed_fraction: float = 0.0,
     overall_scores: list[float] | None = None,
 ) -> pd.DataFrame | None:

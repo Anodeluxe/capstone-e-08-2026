@@ -60,7 +60,7 @@ async def run_prediction_job() -> None:
     print(f"[Scheduler] Running prediction job at {datetime.utcnow().isoformat()}")
 
     async with AsyncSessionLocal() as db:
-        since = datetime.utcnow() - timedelta(hours=72)
+        since = datetime.utcnow() - timedelta(hours=settings.ml_lookback_hours)
         result = await db.execute(
             select(
                 SensorReading.timestamp,
@@ -88,7 +88,6 @@ async def run_prediction_job() -> None:
             db,
             timestamps=timestamps,
             scores=scores,
-            elapsed_fraction=settings.ml_elapsed_fraction,
             overall_scores=scores,
         )
 
@@ -112,16 +111,22 @@ async def run_prediction_job() -> None:
         await db.commit()
         await db.refresh(pred_row)
 
+        raw_warning_hours = prediction.get("rul_hours")
+        warning_hours = float(raw_warning_hours) if raw_warning_hours is not None else None
+        if warning_hours is None and days_until is not None:
+            warning_hours = float(days_until) * 24.0
         should_warn = (
-            days_until is not None
-            and days_until <= settings.early_warning_days
+            warning_hours is not None
+            and warning_hours <= settings.early_warning_hours
             and not pred_row.notification_sent
         )
 
         if should_warn:
             date_str = predicted_date.strftime("%d %b %Y") if predicted_date else "N/A"
+            assert warning_hours is not None
+            warning_days = warning_hours / 24.0
             await send_early_warning_notification(
-                days_until=days_until,
+                days_until=warning_days,
                 predicted_date=date_str,
                 current_score=current_score,
             )
@@ -130,9 +135,9 @@ async def run_prediction_job() -> None:
 
             await ws_manager.broadcast_alert(
                 alert_type="early_warning",
-                message=f"Water quality predicted to be unfit in {days_until:.1f} days",
+                message=f"Water quality predicted to be unfit in {warning_days:.1f} days",
                 data={
-                    "days_until_threshold": days_until,
+                    "days_until_threshold": warning_days,
                     "predicted_date": date_str,
                     "current_score": current_score,
                 },
@@ -154,4 +159,7 @@ async def cleanup_old_readings(days: int = 90) -> None:
             delete(SensorReading).where(SensorReading.timestamp < cutoff)
         )
         await db.commit()
-        print(f"[Scheduler] Cleanup: removed {result.rowcount} old readings (before {cutoff.date()})")
+        print(
+            f"[Scheduler] Cleanup: removed {getattr(result, 'rowcount', 0) or 0} "
+            f"old readings (before {cutoff.date()})"
+        )

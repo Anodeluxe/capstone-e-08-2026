@@ -27,9 +27,9 @@ class DrainLog(Base):
     # NULL = cycle still in progress
     ended_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
-    # Estimated total cycle length in hours (default ~2000h based on training data)
+    # Estimated total cycle length in hours (default ~2400h based on training data)
     # Used as denominator for elapsed_fraction = elapsed_hours / cycle_estimate_hours
-    cycle_estimate_hours: Mapped[float] = mapped_column(Float, default=2000.0)
+    cycle_estimate_hours: Mapped[float] = mapped_column(Float, default=2400.0)
 
     # Who/what triggered this drain log
     # "system" | "user:<id>" | "esp32" | "admin:<id>"

@@ -40,6 +40,10 @@ async def lifespan(app: FastAPI):
     async with AsyncSessionLocal() as db:
         await ensure_valve_states_exist(db)
 
+    # Ensure elapsed_hours has an active drain-cycle anchor for ML inference.
+    from app.services.ml_config import init_ml_config
+    await init_ml_config()
+
     # 3. Start MQTT client (connects + starts paho background loop)
     mqtt_client.start()
 
@@ -86,12 +90,13 @@ app.add_middleware(
 
 # ─── REST API Routers ──────────────────────────────────────────────────────────
 
-from app.api.v1 import auth, dashboard, notifications, predictions, sensors, valves  # noqa: E402
+from app.api.v1 import auth, dashboard, drain_logs, notifications, predictions, sensors, valves  # noqa: E402
 
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(sensors.router, prefix="/api/v1")
 app.include_router(valves.router, prefix="/api/v1")
 app.include_router(predictions.router, prefix="/api/v1")
+app.include_router(drain_logs.router, prefix="/api/v1")
 app.include_router(dashboard.router, prefix="/api/v1")
 app.include_router(notifications.router, prefix="/api/v1")
 

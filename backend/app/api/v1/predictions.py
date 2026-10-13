@@ -4,7 +4,6 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import get_settings
 from app.core.database import get_db
 from app.models.sensor_reading import SensorReading
 from app.models.valve import PredictionResult
@@ -13,8 +12,6 @@ from app.services.prediction_service import predict_eta
 from app.services.ml_prediction_service import predict_hybrid
 
 router = APIRouter(prefix="/predictions", tags=["Predictions"])
-settings = get_settings()
-
 
 @router.get("/latest", response_model=list[PredictionResultOut])
 async def get_latest_predictions(db: AsyncSession = Depends(get_db)):
@@ -29,7 +26,8 @@ async def get_latest_predictions(db: AsyncSession = Depends(get_db)):
 
 @router.get("/run", response_model=dict)
 async def run_prediction_now(
-    hours: int = Query(default=72, ge=6, le=720),
+    hours: int = Query(default=169, ge=6, le=720),
+    mode: str = Query(default="auto", pattern="^(auto|ml|linear)$"),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -63,8 +61,8 @@ async def run_prediction_now(
         db,
         timestamps=timestamps,
         scores=scores,
-        elapsed_fraction=settings.ml_elapsed_fraction,
         overall_scores=scores,
+        mode=mode,
     )
 
     pred_row = PredictionResult(
@@ -75,6 +73,7 @@ async def run_prediction_now(
         predicted_date=prediction.get("predicted_date"),
         confidence=prediction.get("confidence"),
         model_used=prediction.get("model_used", "unknown"),
+        rul_hours=prediction.get("rul_hours"),
         notification_sent=False,
     )
     db.add(pred_row)

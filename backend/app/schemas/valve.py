@@ -76,6 +76,7 @@ class PredictionResultOut(BaseModel):
     predicted_date: datetime | None
     confidence: float | None
     model_used: str
+    rul_hours: float | None = None
     notification_sent: bool
 
     model_config = {"from_attributes": True, "protected_namespaces": ()}

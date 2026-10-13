@@ -14,10 +14,13 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
-from app.services.drain_log_service import get_elapsed_fraction, get_elapsed_fraction_with_fallback
+from app.services.drain_log_service import (
+    get_elapsed_fraction as get_elapsed_fraction_from_db,
+    get_elapsed_fraction_with_fallback,
+)
 
 # Default cycle estimate in hours (fallback if no DrainLog)
-DEFAULT_CYCLE_ESTIMATE_HOURS = 2000.0
+DEFAULT_CYCLE_ESTIMATE_HOURS = 2400.0
 
 # Model path (could be moved to DB later)
 MODEL_PATH = "backend/app/ml/models/xgb_model_hourly_v2_horizon.pkl"
@@ -51,7 +54,7 @@ class MLConfig:
 
         # Cache expired or empty — fetch from DB
         if db is not None:
-            fraction = await get_elapsed_fraction(db)
+            fraction = await get_elapsed_fraction_from_db(db)
         else:
             fraction = await get_elapsed_fraction_with_fallback()
 

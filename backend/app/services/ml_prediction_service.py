@@ -37,6 +37,7 @@ from app.ml.features import (
     load_model as load_xgb_bundle,
 )
 from app.services.ml_config import get_elapsed_fraction
+from app.core.config import get_settings
 
 # Ambang saat produksi memutuskan memakai XGBoost (dibawahnya = kritis/degrading)
 SCORE_LOOKS_DEGRADING = 60.0
@@ -61,6 +62,7 @@ def _rul_to_display(rul_hours: float) -> dict[str, Any]:
         return {
             "rul_hours": None,
             "rul_days": None,
+            "days_until_threshold": None,
             "predicted_date": None,
             "within_30d_window": False,
             "display_hint": "expert_schedule_3_4_months",
@@ -70,6 +72,7 @@ def _rul_to_display(rul_hours: float) -> dict[str, Any]:
     return {
         "rul_hours": round(float(rul_hours), 1),
         "rul_days": round(float(days), 2),
+        "days_until_threshold": round(float(days), 2),
         "predicted_date": predicted_date,
         "within_30d_window": True,
         "display_hint": "machine_learning_rul",
@@ -78,7 +81,7 @@ def _rul_to_display(rul_hours: float) -> dict[str, Any]:
 
 async def predict_rul_ml(
     db: AsyncSession,
-    lookback_hours: int = 72,
+    lookback_hours: int = 169,
     elapsed_fraction: float | None = None,
     overall_scores: list[float] | None = None,
 ) -> dict[str, Any] | None:
@@ -114,20 +117,27 @@ async def predict_rul_ml(
         return None
 
     model = bundle["model"]
-    metadata = bundle.get("metadata", {})
+    # The trainer stores metadata at the bundle root, not under `metadata`.
+    metadata = bundle.get("metadata", bundle)
 
     X = features_df[FEATURE_COLUMNS].values
     rul_raw = float(model.predict(X)[0])
     label_cap = float(metadata.get("target_cap_hours", RUL_CAP_HOURS))
+    if not np.isfinite(rul_raw):
+        return None
+
     rul_hours = max(0.0, min(rul_raw, label_cap))
+    metrics = metadata.get("metrics", {})
 
     return {
         "rul_hours": rul_hours,
         "rul_days": round(rul_hours / 24.0, 2),
         "predicted_date": datetime.utcnow() + timedelta(hours=rul_hours),
         "model_used": "xgb_v2_horizon_30d",
-        "confidence": float(metadata.get("metrics", {}).get("r2", 0.0)),
-        "within_30d_window": rul_hours <= label_cap,
+        "confidence": metrics.get("r2"),
+        "within_30d_window": 0.0 <= rul_raw <= label_cap,
+        "raw_rul_hours": rul_raw,
+        "days_until_threshold": round(rul_hours / 24.0, 2),
         "already_below_threshold": float(
             features_df["score_overall"].iloc[-1]
         ) <= SCORE_THRESHOLD,
@@ -136,7 +146,7 @@ async def predict_rul_ml(
 
 async def get_latest_features_async(
     db: AsyncSession,
-    lookback_hours: int = 72,
+    lookback_hours: int = 169,
     elapsed_fraction: float = 0.0,
     overall_scores: list[float] | None = None,
 ) -> pd.DataFrame | None:
@@ -178,6 +188,7 @@ async def predict_hybrid(
     elapsed_fraction: float | None = None,
     overall_scores: list[float] | None = None,
     threshold: float = SCORE_THRESHOLD,
+    mode: str = "auto",
 ) -> dict[str, Any]:
     """
     Jalur HYBRID yang dipanggil scheduler & predictions:
@@ -191,6 +202,20 @@ async def predict_hybrid(
     # Get elapsed fraction from DB-backed config if not provided
     if elapsed_fraction is None:
         elapsed_fraction = await get_elapsed_fraction(db)
+
+    if mode not in {"auto", "ml", "linear"}:
+        raise ValueError("mode must be one of: auto, ml, linear")
+
+    settings = get_settings()
+    if mode == "linear" or (
+        mode == "auto" and (not settings.ml_enabled or settings.ml_active_model != "xgboost")
+    ):
+        fallback = dict(_regression_fallback(timestamps, scores, threshold))
+        fallback["model_used"] = fallback.get("model_used", MODEL_FALLBACK)
+        fallback["display_hint"] = "regression_eta"
+        fallback["within_30d_window"] = None
+        fallback["is_early_warning_active"] = False
+        return fallback
 
     ml_result = await predict_rul_ml(
         db,
@@ -225,4 +250,4 @@ async def predict_hybrid(
 
 def lookback_hours_for_ml() -> int:
     """Jumlah jam lookback yang dipakai model (MIN_HOURLY_ROWS agar rolling valid)."""
-    return max(MIN_HOURLY_ROWS, 72)
+    return max(MIN_HOURLY_ROWS, get_settings().ml_lookback_hours)

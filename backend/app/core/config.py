@@ -60,6 +60,10 @@ class Settings(BaseSettings):
     early_warning_days: int = 10           # days before unfit = send early warning alert
 
     # ── ML / RUL ──────────────────────────────────────────────────────────────
+    ml_enabled: bool = True
+    ml_active_model: str = "xgboost"
+    ml_lookback_hours: int = 169
+    early_warning_hours: float = 240.0
     ml_elapsed_fraction: float = 0.0  # posisi siklus (0.0=baru drain, 1.0=akhir)
 
     # ── Auth ──────────────────────────────────────────────────────────────────
