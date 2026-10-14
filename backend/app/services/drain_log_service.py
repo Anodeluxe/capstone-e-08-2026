@@ -114,6 +114,9 @@ async def end_drain_cycle(
         return None
 
     log.ended_at = datetime.utcnow()
+    if log.threshold_crossed_at is None:
+        log.event_observed = False
+        log.event_reason = "cycle_ended_before_quality_threshold"
     log.notes = (log.notes or "") + f"\nEnded by {ended_by} at {datetime.utcnow().isoformat()}"
     await db.commit()
     await db.refresh(log)

@@ -1,9 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.models.drain_log import DrainLog
+from app.models.sensor_reading import SensorReading
+from app.ml.features import MIN_HOURLY_ROWS
 from app.services.drain_log_service import (
     end_drain_cycle,
     get_active_drain_log,
@@ -25,6 +28,52 @@ class DrainCycleStartRequest(BaseModel):
 async def active_drain_cycle(db: AsyncSession = Depends(get_db)):
     active = await get_active_drain_log(db)
     return active.to_dict() if active else None
+
+
+@router.get("/readiness", response_model=dict)
+async def collection_readiness(db: AsyncSession = Depends(get_db)):
+    """Report whether the active cycle has enough data for ML inference."""
+    active = await get_active_drain_log(db)
+    if active is None:
+        return {
+            "ready_for_ml": False,
+            "reason": "no_active_drain_cycle",
+            "required_hourly_rows": MIN_HOURLY_ROWS,
+        }
+
+    count_result = await db.execute(
+        select(func.count(SensorReading.id)).where(
+            SensorReading.timestamp >= active.started_at
+        )
+    )
+    hourly_result = await db.execute(
+        select(func.count(func.distinct(func.date_trunc("hour", SensorReading.timestamp))))
+        .where(SensorReading.timestamp >= active.started_at)
+    )
+    latest_result = await db.execute(
+        select(SensorReading.timestamp, SensorReading.score_overall)
+        .where(SensorReading.timestamp >= active.started_at)
+        .order_by(SensorReading.timestamp.desc())
+        .limit(1)
+    )
+    latest = latest_result.first()
+    hourly_rows = int(hourly_result.scalar() or 0)
+
+    return {
+        "ready_for_ml": hourly_rows >= MIN_HOURLY_ROWS,
+        "required_hourly_rows": MIN_HOURLY_ROWS,
+        "hourly_rows": hourly_rows,
+        "raw_rows": int(count_result.scalar() or 0),
+        "hours_remaining": max(0, MIN_HOURLY_ROWS - hourly_rows),
+        "active_drain_log_id": active.id,
+        "cycle_started_at": active.started_at.isoformat(),
+        "latest_timestamp": latest[0].isoformat() if latest else None,
+        "latest_score_overall": latest[1] if latest else None,
+        "threshold_crossed_at": (
+            active.threshold_crossed_at.isoformat()
+            if active.threshold_crossed_at else None
+        ),
+    }
 
 
 @router.get("/", response_model=list[dict])

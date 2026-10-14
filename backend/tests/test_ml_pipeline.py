@@ -9,6 +9,7 @@ import pytest
 from app.ml.features import FEATURE_COLUMNS, MIN_HOURLY_ROWS, build_feature_matrix
 from app.services.drain_log_service import (
     DEFAULT_CYCLE_ESTIMATE_HOURS,
+    end_drain_cycle,
     get_elapsed_fraction,
 )
 
@@ -74,3 +75,23 @@ async def test_elapsed_fraction_is_capped_at_one():
     db.execute.return_value = result
 
     assert await get_elapsed_fraction(db) == 1.0
+
+
+@pytest.mark.asyncio
+async def test_end_cycle_marks_unobserved_quality_event():
+    db = AsyncMock()
+    result = MagicMock()
+    cycle = SimpleNamespace(
+        threshold_crossed_at=None,
+        event_observed=True,
+        event_reason=None,
+        notes=None,
+    )
+    result.scalars.return_value.first.return_value = cycle
+    db.execute.return_value = result
+
+    ended = await end_drain_cycle(db, drain_log_id=1, ended_by="operator")
+
+    assert ended is cycle
+    assert cycle.event_observed is False
+    assert cycle.event_reason == "cycle_ended_before_quality_threshold"

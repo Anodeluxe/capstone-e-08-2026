@@ -20,6 +20,15 @@ def upgrade() -> None:
     op.execute(
         "ALTER TABLE prediction_results ADD COLUMN IF NOT EXISTS rul_hours DOUBLE PRECISION"
     )
+    op.execute(
+        "ALTER TABLE drain_logs ADD COLUMN IF NOT EXISTS threshold_crossed_at TIMESTAMP"
+    )
+    op.execute(
+        "ALTER TABLE drain_logs ADD COLUMN IF NOT EXISTS event_observed BOOLEAN NOT NULL DEFAULT FALSE"
+    )
+    op.execute(
+        "ALTER TABLE drain_logs ADD COLUMN IF NOT EXISTS event_reason VARCHAR(100)"
+    )
 
 
 def downgrade() -> None:
@@ -29,3 +38,6 @@ def downgrade() -> None:
     op.execute(
         "ALTER TABLE prediction_results DROP COLUMN IF EXISTS rul_hours"
     )
+    op.execute("ALTER TABLE drain_logs DROP COLUMN IF EXISTS threshold_crossed_at")
+    op.execute("ALTER TABLE drain_logs DROP COLUMN IF EXISTS event_observed")
+    op.execute("ALTER TABLE drain_logs DROP COLUMN IF EXISTS event_reason")

@@ -1,6 +1,9 @@
 from datetime import datetime, timedelta
+from io import StringIO
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import StreamingResponse
+import csv
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,6 +12,38 @@ from app.models.sensor_reading import SensorReading
 from app.schemas.sensor import SensorReadingOut
 
 router = APIRouter(prefix="/sensors", tags=["Sensors"])
+
+
+@router.get("/export")
+async def export_sensor_data(
+    hours: int = Query(default=720, ge=1, le=2160),
+    db: AsyncSession = Depends(get_db),
+):
+    """Export raw readings and computed scores for offline ML analysis."""
+    since = datetime.utcnow() - timedelta(hours=hours)
+    result = await db.execute(
+        select(SensorReading)
+        .where(SensorReading.timestamp >= since)
+        .order_by(SensorReading.timestamp.asc())
+    )
+    output = StringIO()
+    fields = [
+        "timestamp", "ph", "tds", "turbidity", "temperature", "water_level",
+        "score_overall", "score_bathroom", "score_kitchen", "score_laundry",
+        "score_garden", "is_sudden_change", "anomaly_parameter",
+    ]
+    writer = csv.DictWriter(output, fieldnames=fields)
+    writer.writeheader()
+    for row in result.scalars():
+        values = row.to_dict()
+        writer.writerow({field: values.get(field) for field in fields})
+
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=sensor-readings.csv"},
+    )
 
 
 @router.get("/latest", response_model=SensorReadingOut)

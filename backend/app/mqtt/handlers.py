@@ -24,6 +24,7 @@ from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal
 from app.core.websocket_manager import ws_manager
 from app.models.sensor_reading import SensorReading
+from app.services.drain_log_service import get_active_drain_log
 from app.schemas.sensor import ESP32SensorPayload, ESP32ValveAck
 from app.services.anomaly_service import detect_sudden_change
 from app.services.notification_service import (
@@ -109,6 +110,17 @@ async def handle_sensor_reading(raw_payload: str) -> None:
 
     # ── Step 4: Persist to DB ─────────────────────────────────────────────────
     async with AsyncSessionLocal() as db:
+        active_drain = await get_active_drain_log(db)
+        if (
+            active_drain is not None
+            and active_drain.threshold_crossed_at is None
+            and scores.overall <= 60.0
+        ):
+            # Capture the first observed quality event for later RUL labeling.
+            active_drain.threshold_crossed_at = timestamp
+            active_drain.event_observed = True
+            active_drain.event_reason = "score_overall_lte_60"
+
         sensor_row = SensorReading(
             timestamp=timestamp,
             ph=reading.ph,

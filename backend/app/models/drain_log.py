@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -27,6 +27,11 @@ class DrainLog(Base):
     # NULL = cycle still in progress
     ended_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
+    # First quality-threshold event observed during this cycle.
+    threshold_crossed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    event_observed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    event_reason: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
     # Estimated total cycle length in hours (default ~2400h based on training data)
     # Used as denominator for elapsed_fraction = elapsed_hours / cycle_estimate_hours
     cycle_estimate_hours: Mapped[float] = mapped_column(Float, default=2400.0)
@@ -48,6 +53,12 @@ class DrainLog(Base):
             "id": self.id,
             "started_at": self.started_at.isoformat() if self.started_at else None,
             "ended_at": self.ended_at.isoformat() if self.ended_at else None,
+            "threshold_crossed_at": (
+                self.threshold_crossed_at.isoformat()
+                if self.threshold_crossed_at else None
+            ),
+            "event_observed": self.event_observed,
+            "event_reason": self.event_reason,
             "cycle_estimate_hours": self.cycle_estimate_hours,
             "created_by": self.created_by,
             "notes": self.notes,
