@@ -1,0 +1,19 @@
+# ── Dependencies & build output ──────────────────────────────────────────────
+node_modules/
+.next/
+out/
+build/
+*.tsbuildinfo
+
+# ── Secrets ──────────────────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── Lain-lain ────────────────────────────────────────────────────────────────
+.git/
+.gitignore
+Dockerfile
+.dockerignore
+README.md
+*.log

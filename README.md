@@ -21,7 +21,7 @@ Install these before anything else:
 | Python | 3.12 | https://www.python.org/downloads/ |
 | Docker Desktop | latest | https://www.docker.com/products/docker-desktop/ |
 | Git | any | https://git-scm.com/ |
-| Node.js | 18+ | https://nodejs.org/ (needed for frontend later) |
+| Node.js | 20.9+ | https://nodejs.org/ (Next.js 16 — frontend + build image Docker) |
 
 ---
 
@@ -80,10 +80,11 @@ The defaults work out of the box for local development — they match the Docker
 docker compose up -d
 ```
 
-This starts three containers:
-- **PostgreSQL + TimescaleDB** on port 5432 — stores all sensor data
-- **Redis** on port 6379 — background task queue
+This starts two containers:
+- **PostgreSQL + TimescaleDB** on port 5432 (bound to `127.0.0.1`, host-only) — stores all sensor data
 - **Mosquitto** on port 1883 — MQTT broker that receives data from the ESP32
+
+> Redis tidak dipakai di proyek ini — background job berjalan in-process lewat APScheduler.
 
 **Terminal 2 — start the backend** (from `backend/`):
 
@@ -92,12 +93,52 @@ This starts three containers:
 uvicorn app.main:app --reload --port 8000
 ```
 
+**Terminal 3 — start the frontend** (from `frontend/`):
+
+```powershell
+npm run dev
+```
+
 The backend auto-creates all database tables on first startup. No separate migration step needed.
 
 | URL | What it is |
 |---|---|
 | http://localhost:8000/docs | Interactive API docs |
 | http://localhost:8000/health | Health check |
+| http://localhost:3000 | Next.js dashboard |
+
+---
+
+## Running the Full Stack with Docker (production)
+
+Untuk menjalankan **backend + frontend + nginx** sebagai container (semua di Docker Compose):
+
+```bash
+cp .env.example .env                    # konfigurasi compose + build-arg frontend
+cp backend/.env.example backend/.env    # konfigurasi aplikasi (secret)
+./deploy.sh                             # build + start semua service
+```
+
+Perintah yang setara:
+
+```bash
+docker compose --profile app up -d --build
+```
+
+Service yang dijalankan (profile `app`):
+
+| Service | Port | Keterangan |
+|---|---|---|
+| `toren_db` | 5432 (host-only) | TimescaleDB |
+| `toren_mqtt` | 1883 | MQTT broker — **publik**, ESP32 butuh akses |
+| `toren_backend` | 8000 (host-only) | FastAPI + APScheduler |
+| `toren_frontend` | 3000 (host-only) | Next.js PWA (standalone) |
+| `toren_nginx` | 80 / 443 | Reverse proxy (frontend + `/api` + `/ws`) |
+
+> **Penting:** `NEXT_PUBLIC_*` di-inline Next.js saat `next build`. Mengubah URL API ⇒ rebuild image frontend:
+> `docker compose --profile app up -d --build frontend`
+
+Lihat [`deploy/README.md`](deploy/README.md) untuk panduan deploy ke server + HTTPS.
 
 ---
 
@@ -155,11 +196,18 @@ capstone-e-08-2026/
 │   │   └── ml/                  Model persistence and retraining
 │   ├── tests/                   Unit tests
 │   ├── .env.example             Copy this to .env
+│   ├── Dockerfile               Image produksi backend (multi-stage)
+│   ├── .dockerignore
 │   └── requirements.txt         Python dependencies
 ├── frontend/                    Next.js PWA dashboard
+│   ├── Dockerfile               Image produksi frontend (multi-stage, standalone)
+│   └── .dockerignore
 ├── firmware/esp32/              PlatformIO & Arduino firmware (EWMA filter, temp-compensated level, offline logging)
 ├── mosquitto/config/            MQTT broker config
-├── docker-compose.yml           Infrastructure (DB + Redis + MQTT)
+├── deploy/                      Nginx reverse proxy + panduan deploy server
+├── docker-compose.yml           Infrastruktur + (profile "app") backend, frontend, nginx
+├── deploy.sh                    Script deploy 1-perintah
+├── .env.example                 Konfigurasi untuk Docker Compose
 └── CAPSTONE_PROJECT_MASTER_PLAN.md Master blueprint & scoring registry
 ```
 

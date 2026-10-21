@@ -47,7 +47,7 @@ An IoT water quality monitoring system for household water tanks (toren). An ESP
 | Background Jobs | APScheduler (async, in-process) |
 | ML / Prediction | scikit-learn, ruptures, statsmodels, numpy, pandas |
 | Notifications | fastapi-mail (email SMTP) + Fonnte HTTP API (WhatsApp) |
-| Containerization | Docker Compose (DB, Redis, Mosquitto) |
+| Containerization | Docker Compose (TimescaleDB, Mosquitto, backend, frontend, Nginx) |
 
 ---
 
@@ -361,9 +361,6 @@ MQTT_TOPIC_SENSORS=toren/sensors
 MQTT_TOPIC_VALVE_CMD=toren/valves/cmd
 MQTT_TOPIC_VALVE_STATUS=toren/valves/status
 
-# Redis
-REDIS_URL=redis://localhost:6379/0
-
 # Email (Gmail SMTP)
 MAIL_USERNAME=
 MAIL_PASSWORD=
@@ -614,3 +611,62 @@ mosquitto_pub -h localhost -p 1883 \
 API docs: `http://localhost:8000/docs`
 Frontend: `http://localhost:3000`
 Health: `http://localhost:8000/health`
+
+---
+
+## Deployment (Docker Compose)
+
+### Mode development (infra saja)
+
+```bash
+docker compose up -d
+```
+
+Menjalankan **hanya** `timescaledb` + `mosquitto`. Backend & frontend jalan di host.
+
+### Mode produksi (stack lengkap)
+
+```bash
+cp .env.example .env              # root: config compose + build-arg frontend
+cp backend/.env.example backend/.env
+./deploy.sh                        # = docker compose --profile app up -d --build
+```
+
+Service ber-profile `app`: `backend`, `frontend`, `nginx`.
+
+### Aturan penting saat deploy
+
+| Aturan | Alasan |
+|---|---|
+| `uvicorn --workers 1` (sudah di-set di Dockerfile) | APScheduler in-process → multi-worker = job prediksi dobel + notifikasi berulang |
+| `NEXT_PUBLIC_*` dikirim sebagai **build arg** | Di-inline Next.js saat `next build`; ganti URL ⇒ rebuild image frontend |
+| `.env` **tidak** di-COPY ke image | Secret dikirim lewat `env_file` di compose |
+| Port DB & backend bind ke `127.0.0.1` | Hanya Nginx yang mengekspos ke publik; DB tak terjangkau dari internet |
+| `backend/.dockerignore` mengecualikan `app/ml/data/` | 489MB data training tidak perlu masuk image |
+| HTTPS wajib | Service worker PWA hanya jalan di secure context |
+
+### Hostname di dalam container
+
+| Service | Hostname (dalam jaringan Docker) |
+|---|---|
+| Database | `timescaledb` (port 5432) |
+| MQTT broker | `mosquitto` (port 1883) |
+| Backend (dari Nginx) | `backend` (port 8000) |
+| Frontend (dari Nginx) | `frontend` (port 3000) |
+
+### Struktur file deploy
+
+```
+.env.example            config compose + build args frontend
+deploy.sh                script deploy (up|logs|status|down|backup)
+deploy/nginx.conf        reverse proxy HTTP
+deploy/nginx-tls.conf    reverse proxy HTTPS (aktif setelah certbot)
+deploy/README.md         panduan deploy server lengkap
+```
+
+### Backup
+
+```bash
+./deploy.sh backup
+# = docker compose --profile app exec -T timescaledb pg_dump -U postgres toren_db | gzip > backups/...
+```

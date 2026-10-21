@@ -18,6 +18,11 @@ frontend/.env.local
 
 # Docker
 *.log
+backups/
+deploy/certbot/*
+!deploy/certbot/.gitkeep
+deploy/certbot-webroot/*
+!deploy/certbot-webroot/.gitkeep
 
 # Claude
 .claude/
@@ -28,3 +33,4 @@ todo.md
 
 # env
 /.env*
+!/.env.example

@@ -359,7 +359,7 @@ capstone-e-08-2026/
 1. **Purwarupa Fisik Beroperasi Penuh**: Miniatur instalasi toren dengan 5 sensor terpasang, box kontroler ESP32 IP65, 4 katup solenoid yang membuka/menutup sesuai kualitas air secara otomatis dan dapat dioverride dari jarak jauh.
 2. **Paket Perangkat Lunak Terintegrasi**:
    - Firmware ESP32 terstruktur di folder `firmware/esp32/`.
-   - Backend FastAPI tervirtualisasi (TimescaleDB, Redis, Mosquitto MQTT broker).
+   - Backend FastAPI tervirtualisasi (TimescaleDB, Mosquitto MQTT broker).
    - Pipeline inferensi model `xgb_model_hourly_v2_horizon.pkl` berjalan per jam.
    - Frontend Next.js PWA yang responsif dan dapat diakses di smartphone pengguna.
 3. **Dokumen Laporan Akhir Capstone (C-300 / C-400 / C-500)**:

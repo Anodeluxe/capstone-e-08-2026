@@ -1,0 +1,26 @@
+# ── Venv & Python ────────────────────────────────────────────────────────────
+venv_windows/
+venv_fikar/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ── Secrets ──────────────────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── Data & artifact besar (489MB+) ───────────────────────────────────────────
+# app/ml/data/processed hanya dipakai untuk training, tidak perlu di image.
+app/ml/data/
+app/ml/*.ipynb
+
+# ── Tidak dipakai saat runtime ───────────────────────────────────────────────
+tests/
+scripts/
+*.log
