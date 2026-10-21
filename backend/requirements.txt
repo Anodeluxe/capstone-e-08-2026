@@ -17,7 +17,6 @@ pydantic-settings==2.5.2
 
 # Background tasks
 celery==5.4.0
-redis==5.1.0
 
 # Notifications
 fastapi-mail==1.4.1
@@ -28,7 +27,7 @@ numpy==2.1.1
 pandas==2.2.3
 ruptures==1.1.9         # Change-point / sudden anomaly detection
 statsmodels==0.14.3
-xgboost==3.4.1
+xgboost>=3.0.0,<3.4.0   # 3.4.x tidak bisa memuat bundle pickle produksi (input stream corrupted)
 joblib>=1.4.0
 
 # Scheduling (periodic prediction jobs)

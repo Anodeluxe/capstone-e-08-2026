@@ -28,8 +28,6 @@ class Settings(BaseSettings):
     mqtt_topic_valve_cmd: str = "toren/valves/cmd"
     mqtt_topic_valve_status: str = "toren/valves/status"
 
-    # ── Redis ─────────────────────────────────────────────────────────────────
-    redis_url: str = "redis://localhost:6379/0"
 
     # ── Email ─────────────────────────────────────────────────────────────────
     mail_username: str = ""

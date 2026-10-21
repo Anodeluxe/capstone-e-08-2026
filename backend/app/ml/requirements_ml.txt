@@ -1,7 +1,7 @@
 # ML Dependencies — Fase 0
 # Install: pip install -r requirements_ml.txt
 
-xgboost>=2.0
+xgboost>=3.0,<3.4      # 3.4.x gagal load bundle pickle horizon produksi
 tensorflow>=2.15
 joblib>=1.3
 scikit-learn>=1.3
