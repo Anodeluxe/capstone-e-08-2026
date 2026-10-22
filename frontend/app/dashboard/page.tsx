@@ -1,7 +1,10 @@
 'use client'
 
+import { format } from 'date-fns'
+import { id as idLocale } from 'date-fns/locale'
 import { useDashboardSummary } from '@/hooks/useSensorData'
 import { useWSStore } from '@/hooks/useSensorWebSocket'
+import { toUtcDate } from '@/lib/utils'
 import AlertBanner from '@/components/dashboard/AlertBanner'
 import SensorScoreCard from '@/components/dashboard/SensorScoreCard'
 import SystemStatus from '@/components/dashboard/SystemStatus'
@@ -53,9 +56,19 @@ export default function DashboardPage() {
 
       {latest && (
         <section>
-          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-widest mb-3">
-            Pembacaan Sensor Terkini
-          </h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-widest">
+              Pembacaan Sensor Terkini
+            </h2>
+            {latest.timestamp && (
+              <span className="text-xs text-muted-foreground font-mono">
+                {(() => {
+                  const d = toUtcDate(latest.timestamp)
+                  return d ? format(d, 'dd MMM yyyy HH:mm:ss', { locale: idLocale }) : latest.timestamp
+                })()}
+              </span>
+            )}
+          </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             {[
               { label: 'pH', value: latest.ph.toFixed(2), unit: '' },

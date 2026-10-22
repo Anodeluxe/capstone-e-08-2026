@@ -2,7 +2,7 @@
 # Toren Monitoring — Docker Compose
 #
 #   docker compose up -d
-#       → hanya infrastruktur (TimescaleDB + Mosquitto). Dipakai untuk
+#       → hanya infrastruktur (TimescaleDB + Mosquitto + WAHA). Dipakai untuk
 #         development backend/frontend jalan di host (venv + npm run dev).
 #
 #   docker compose --profile app up -d --build
@@ -16,6 +16,7 @@
 #     ke backend lewat Cloudflare Tunnel (lihat deploy/README.md).
 #   * Port MQTT (1883) dibiarkan publik karena ESP32 harus konek dari luar
 #     (Cloudflare Tunnel tidak bisa meneruskan TCP mentah ke ESP32).
+#   * Port WAHA (3008) untuk scan QR code WhatsApp lewat browser/Tailscale.
 # ─────────────────────────────────────────────────────────────────────────────
 
 name: toren-monitoring
@@ -67,6 +68,18 @@ services:
       start_period: 10s
     networks: [toren]
 
+  waha:
+    image: devlikeapro/waha
+    container_name: toren_waha
+    restart: unless-stopped
+    ports:
+      - "3008:3000"
+    environment:
+      - WHATSAPP_DEFAULT_ENGINE=NOWEB
+    volumes:
+      - waha_data:/app/.sessions
+    networks: [toren]
+
   # ── Profile "app" — stack produksi ─────────────────────────────────────────
 
   backend:
@@ -87,11 +100,9 @@ services:
       DATABASE_SYNC_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-password}@timescaledb:5432/${POSTGRES_DB:-toren_db}
       MQTT_BROKER_HOST: mosquitto
       MQTT_BROKER_PORT: 1883
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,https://capstone-e-08-2026.vercel.app}
-      # localhost di dalam container = container itu sendiri, bukan host.
-      WAHA_BASE_URL: ${WAHA_BASE_URL:-http://host.docker.internal:3000}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,https://capstone-e-08-2026.vercel.app,https://amin-u.vercel.app,https://aminu.irsad.site}
+      WAHA_BASE_URL: ${WAHA_BASE_URL:-http://waha:3000}
     extra_hosts:
-      # Supaya backend bisa menjangkau WAHA yang jalan di host server.
       - "host.docker.internal:host-gateway"
     depends_on:
       timescaledb:
@@ -109,6 +120,7 @@ volumes:
     # Nama dipatok ke volume lama (project "capstone-e-08-2026") supaya data
     # tidak hilang walau nama project compose sudah jadi "toren-monitoring".
     name: capstone-e-08-2026_toren_db_data
+  waha_data:
 
 networks:
   toren:

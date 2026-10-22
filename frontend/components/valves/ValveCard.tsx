@@ -1,11 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { cn } from '@/lib/utils'
+import { cn, toUtcDate } from '@/lib/utils'
 import { VALVE_LABELS } from '@/components/dashboard/SensorScoreCard'
 import OverrideModal from './OverrideModal'
 import type { ValveState } from '@/types'
-import { format, parseISO } from 'date-fns'
+import { format } from 'date-fns'
 import { id as idLocale } from 'date-fns/locale'
 
 interface Props {
@@ -29,38 +29,26 @@ export default function ValveCard({ valve }: Props) {
       >
         <div className="flex items-start justify-between mb-4">
           <div>
-            <h3 className="font-medium text-sm text-foreground">
-              {VALVE_LABELS[valve.id]}
-            </h3>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Terakhir: {valve.last_changed_by}
-            </p>
+            <h3 className="font-medium text-foreground">{VALVE_LABELS[valve.id] ?? valve.id}</h3>
+            <p className="text-xs text-muted-foreground font-mono mt-0.5">{valve.id}</p>
           </div>
-          {/* Toggle switch */}
           <button
             onClick={handleToggle}
             className={cn(
-              'relative shrink-0 w-12 h-6 rounded-full transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1',
+              'px-3 py-1 rounded-md text-xs font-medium transition-colors',
               valve.is_open
-                ? 'bg-emerald-500'
-                : 'bg-muted-foreground/30',
+                ? 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-950/60 dark:text-rose-300'
+                : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300',
             )}
-            aria-label={valve.is_open ? 'Tutup katup' : 'Buka katup'}
-            aria-pressed={valve.is_open}
           >
-            <span
-              className={cn(
-                'absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform duration-150',
-                valve.is_open ? 'translate-x-6' : 'translate-x-0',
-              )}
-            />
+            {valve.is_open ? 'Tutup' : 'Buka'}
           </button>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center justify-between text-xs pt-3 border-t border-border">
           <span
             className={cn(
-              'text-xs font-medium px-2 py-0.5 rounded-full',
+              'px-2 py-0.5 rounded-full font-medium',
               valve.is_open
                 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300'
                 : 'bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300',
@@ -76,7 +64,10 @@ export default function ValveCard({ valve }: Props) {
         </div>
 
         <p className="text-xs text-muted-foreground mt-2 font-mono">
-          {format(parseISO(valve.last_changed_at), 'dd MMM HH:mm', { locale: idLocale })}
+          {(() => {
+            const d = toUtcDate(valve.last_changed_at)
+            return d ? format(d, 'dd MMM HH:mm', { locale: idLocale }) : valve.last_changed_at
+          })()}
         </p>
       </div>
 

@@ -12,6 +12,7 @@ import {
 } from 'recharts'
 import { format } from 'date-fns'
 import { id as idLocale } from 'date-fns/locale'
+import { toUtcDate } from '@/lib/utils'
 
 interface TrendPoint {
   hour: string
@@ -50,7 +51,10 @@ export default function TrendChart({ data, threshold = 60, title = 'Tren Skor 24
             <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.91 0.008 220)" opacity={0.6} />
             <XAxis
               dataKey="hour"
-              tickFormatter={(v: string) => format(new Date(v), 'HH:mm', { locale: idLocale })}
+              tickFormatter={(v: string) => {
+                const d = toUtcDate(v)
+                return d ? format(d, 'HH:mm', { locale: idLocale }) : v
+              }}
               tick={{ fontSize: 10, fontFamily: 'var(--font-mono)' }}
               interval="preserveStartEnd"
               minTickGap={40}
@@ -63,9 +67,10 @@ export default function TrendChart({ data, threshold = 60, title = 'Tren Skor 24
               stroke="oklch(0.62 0.012 220)"
             />
             <Tooltip
-              labelFormatter={(v: unknown) =>
-                format(new Date(v as string), 'dd MMM yyyy HH:mm', { locale: idLocale })
-              }
+              labelFormatter={(v: unknown) => {
+                const d = toUtcDate(v as string)
+                return d ? format(d, 'dd MMM yyyy HH:mm', { locale: idLocale }) : String(v)
+              }}
               formatter={(value: unknown) => [
                 value != null ? (value as number).toFixed(1) : '—',
                 'Skor Rata-rata',

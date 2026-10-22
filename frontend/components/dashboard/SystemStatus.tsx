@@ -1,24 +1,42 @@
 'use client'
 
-import { cn } from '@/lib/utils'
+import { useEffect, useState } from 'react'
+import { cn, toUtcDate } from '@/lib/utils'
 import { useWSStore } from '@/hooks/useSensorWebSocket'
 import { useDashboardSummary } from '@/hooks/useSensorData'
 
 function formatAge(seconds: number | null): string {
-  if (seconds === null) return 'tidak diketahui'
-  if (seconds < 60) return `${Math.round(seconds)}d lalu`
+  if (seconds === null || isNaN(seconds)) return 'tidak diketahui'
+  if (seconds < 60) return `${Math.max(0, Math.round(seconds))}d lalu`
   const minutes = Math.floor(seconds / 60)
   if (minutes < 60) return `${minutes}m lalu`
   return `${Math.floor(minutes / 60)}j lalu`
 }
 
 export default function SystemStatus() {
-  const { status } = useWSStore()
+  const { status, latestReading } = useWSStore()
   const { data } = useDashboardSummary()
+  const [now, setNow] = useState<number>(Date.now())
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(timer)
+  }, [])
 
   const mqttConnected = data?.system_status.mqtt_connected ?? false
-  const age = data?.system_status.last_reading_age_seconds ?? null
   const anomalies = data?.anomaly_count_24h ?? 0
+
+  // Hitung live age: prioritaskan timestamp dari WebSocket terbaru, lalu data polling
+  const latestTs = latestReading?.timestamp ?? data?.latest_reading?.timestamp
+  let age: number | null = null
+  if (latestTs) {
+    const d = toUtcDate(latestTs)
+    if (d) {
+      age = Math.max(0, (now - d.getTime()) / 1000)
+    }
+  } else if (data?.system_status?.last_reading_age_seconds != null) {
+    age = data.system_status.last_reading_age_seconds
+  }
 
   return (
     <div className="flex flex-wrap gap-x-5 gap-y-1.5 text-xs text-muted-foreground">

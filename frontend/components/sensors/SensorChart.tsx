@@ -9,8 +9,9 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts'
-import { format, parseISO } from 'date-fns'
+import { format } from 'date-fns'
 import { id as idLocale } from 'date-fns/locale'
+import { toUtcDate } from '@/lib/utils'
 import type { SensorReading } from '@/types'
 
 type SensorNumericKey = keyof Pick<
@@ -44,7 +45,10 @@ export default function SensorChart({
           <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.91 0.008 220)" opacity={0.6} />
           <XAxis
             dataKey="timestamp"
-            tickFormatter={(v: string) => format(parseISO(v), 'HH:mm', { locale: idLocale })}
+            tickFormatter={(v: string) => {
+              const d = toUtcDate(v)
+              return d ? format(d, 'HH:mm', { locale: idLocale }) : v
+            }}
             tick={{ fontSize: 10, fontFamily: 'var(--font-mono)' }}
             interval="preserveStartEnd"
             minTickGap={40}
@@ -57,9 +61,10 @@ export default function SensorChart({
             stroke="oklch(0.62 0.012 220)"
           />
           <Tooltip
-            labelFormatter={(v: unknown) =>
-              format(parseISO(v as string), 'dd MMM yyyy HH:mm', { locale: idLocale })
-            }
+            labelFormatter={(v: unknown) => {
+              const d = toUtcDate(v as string)
+              return d ? format(d, 'dd MMM yyyy HH:mm', { locale: idLocale }) : String(v)
+            }}
             formatter={(value: unknown) => [`${value as number}${unit}`, label]}
             contentStyle={{
               fontSize: 12,

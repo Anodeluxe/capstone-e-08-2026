@@ -6,9 +6,9 @@ import { predictionsApi } from '@/lib/api'
 import ETACard from '@/components/predictions/ETACard'
 import TrendChart from '@/components/predictions/TrendChart'
 import { Button } from '@/components/ui/button'
-import { format, parseISO } from 'date-fns'
+import { format } from 'date-fns'
 import { id as idLocale } from 'date-fns/locale'
-import { isStatisticalModel } from '@/lib/utils'
+import { isStatisticalModel, toUtcDate } from '@/lib/utils'
 
 export default function PredictionsPage() {
   const { data: predictions, isLoading, refetch } = useLatestPredictions()
@@ -24,8 +24,10 @@ export default function PredictionsPage() {
     <div className="flex flex-col gap-6">
       <div className="flex items-end justify-between">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Prediksi</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Estimasi waktu degradasi kualitas air</p>
+          <h1 className="text-xl font-semibold tracking-tight">Prediksi Degradasi</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Model hybrid memprediksi kapan kualitas air akan melanggar ambang batas
+          </p>
         </div>
         <Button
           onClick={() => runPrediction()}
@@ -33,19 +35,23 @@ export default function PredictionsPage() {
           variant="outline"
           size="sm"
         >
-          {isPending ? 'Memproses...' : 'Jalankan Prediksi'}
+          {isPending ? 'Menghitung...' : 'Jalankan Model'}
         </Button>
       </div>
 
-      <div className="grid sm:grid-cols-2 gap-4">
-        <ETACard prediction={latest} isLoading={isLoading} />
-        <TrendChart
-          data={dashboard?.trend_24h ?? []}
-          title="Tren Skor 24 Jam Terakhir"
-        />
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+        <div className="md:col-span-1">
+          <ETACard prediction={latest} isLoading={isLoading} />
+        </div>
+        <div className="md:col-span-2">
+          <TrendChart
+            data={dashboard?.trend_24h ?? []}
+            title="Tren Kualitas Air (Input Model)"
+          />
+        </div>
       </div>
 
-      {(predictions?.length ?? 0) > 0 && (
+      {predictions && predictions.length > 0 && (
         <section>
           <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-widest mb-3">
             Riwayat Prediksi
@@ -58,9 +64,9 @@ export default function PredictionsPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/50 text-muted-foreground text-left">
-                    <th className="px-4 py-3 font-medium">Dihitung</th>
-                    <th className="px-4 py-3 font-medium">Hari Tersisa</th>
-                    <th className="px-4 py-3 font-medium">Prediksi Tanggal</th>
+                    <th className="px-4 py-3 font-medium">Dihitung Pada</th>
+                    <th className="px-4 py-3 font-medium">Sisa Waktu</th>
+                    <th className="px-4 py-3 font-medium">Perkiraan Tanggal</th>
                     <th className="px-4 py-3 font-medium">Kepercayaan</th>
                     <th className="px-4 py-3 font-medium">Model</th>
                     <th className="px-4 py-3 font-medium">Notifikasi</th>
@@ -75,7 +81,10 @@ export default function PredictionsPage() {
                         className="border-b border-border/60 last:border-0 hover:bg-muted/40 transition-colors"
                       >
                         <td className="px-4 py-2 text-muted-foreground whitespace-nowrap text-xs font-mono">
-                          {format(parseISO(p.computed_at), 'dd MMM yyyy HH:mm', { locale: idLocale })}
+                          {(() => {
+                            const d = toUtcDate(p.computed_at)
+                            return d ? format(d, 'dd MMM yyyy HH:mm', { locale: idLocale }) : p.computed_at
+                          })()}
                         </td>
                         <td className="px-4 py-2 font-mono tabular-nums">
                           {p.days_until_threshold !== null ? (
@@ -88,7 +97,10 @@ export default function PredictionsPage() {
                         </td>
                         <td className="px-4 py-2">
                           {p.predicted_date
-                            ? format(parseISO(p.predicted_date), 'dd MMM yyyy', { locale: idLocale })
+                            ? (() => {
+                                const d = toUtcDate(p.predicted_date)
+                                return d ? format(d, 'dd MMM yyyy', { locale: idLocale }) : p.predicted_date
+                              })()
                             : '—'}
                         </td>
                         <td className="px-4 py-2 font-mono tabular-nums">

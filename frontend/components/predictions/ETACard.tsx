@@ -1,8 +1,8 @@
 'use client'
 
-import { format, parseISO } from 'date-fns'
+import { format } from 'date-fns'
 import { id as idLocale } from 'date-fns/locale'
-import { cn, isStatisticalModel } from '@/lib/utils'
+import { cn, isStatisticalModel, toUtcDate } from '@/lib/utils'
 import type { PredictionResult } from '@/types'
 
 interface Props {
@@ -61,7 +61,10 @@ export default function ETACard({ prediction, isLoading }: Props) {
       ) : (
         predicted_date && (
           <p className="text-sm text-muted-foreground mb-4">
-            Perkiraan: {format(parseISO(predicted_date), 'dd MMMM yyyy', { locale: idLocale })}
+            Perkiraan: {(() => {
+              const d = toUtcDate(predicted_date)
+              return d ? format(d, 'dd MMMM yyyy', { locale: idLocale }) : predicted_date
+            })()}
           </p>
         )
       )}

@@ -1,8 +1,8 @@
 'use client'
 
-import { format, parseISO } from 'date-fns'
+import { format } from 'date-fns'
 import { id as idLocale } from 'date-fns/locale'
-import { cn } from '@/lib/utils'
+import { cn, toUtcDate } from '@/lib/utils'
 import type { SensorReading } from '@/types'
 
 interface Props {
@@ -54,7 +54,10 @@ export default function SensorTable({ data }: Props) {
                 )}
               >
                 <td className="px-4 py-2 text-muted-foreground whitespace-nowrap text-xs font-mono">
-                  {format(parseISO(row.timestamp), 'dd MMM HH:mm:ss', { locale: idLocale })}
+                  {(() => {
+                    const d = toUtcDate(row.timestamp)
+                    return d ? format(d, 'dd MMM HH:mm:ss', { locale: idLocale }) : row.timestamp
+                  })()}
                 </td>
                 <td className="px-4 py-2 font-mono tabular-nums">{row.ph.toFixed(2)}</td>
                 <td className="px-4 py-2 font-mono tabular-nums">{row.turbidity.toFixed(1)} NTU</td>

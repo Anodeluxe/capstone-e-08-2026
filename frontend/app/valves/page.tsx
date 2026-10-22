@@ -2,9 +2,9 @@
 
 import { useValveList, useValveOverrides } from '@/hooks/useSensorData'
 import ValveCard from '@/components/valves/ValveCard'
-import { format, parseISO } from 'date-fns'
+import { format } from 'date-fns'
 import { id as idLocale } from 'date-fns/locale'
-import { cn } from '@/lib/utils'
+import { cn, toUtcDate } from '@/lib/utils'
 
 export default function ValvesPage() {
   const { data: valves, isLoading } = useValveList()
@@ -61,7 +61,10 @@ export default function ValvesPage() {
                       className="border-b border-border/60 last:border-0 hover:bg-muted/40 transition-colors"
                     >
                       <td className="px-4 py-2 text-muted-foreground whitespace-nowrap text-xs font-mono">
-                        {format(parseISO(log.overridden_at), 'dd MMM yyyy HH:mm', { locale: idLocale })}
+                        {(() => {
+                          const d = toUtcDate(log.overridden_at)
+                          return d ? format(d, 'dd MMM yyyy HH:mm', { locale: idLocale }) : log.overridden_at
+                        })()}
                       </td>
                       <td className="px-4 py-2 capitalize">{log.valve_id}</td>
                       <td className="px-4 py-2">
