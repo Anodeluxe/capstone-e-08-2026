@@ -18,7 +18,7 @@ Also handles:
 
 import asyncio
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal
@@ -84,7 +84,9 @@ async def handle_sensor_reading(raw_payload: str) -> None:
         return
 
     timestamp = (
-        datetime.utcfromtimestamp(reading.timestamp)
+        datetime.fromtimestamp(reading.timestamp, tz=timezone.utc).replace(
+            tzinfo=None
+        )
         if reading.timestamp
         else datetime.utcnow()
     )

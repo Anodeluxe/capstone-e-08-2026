@@ -4,6 +4,7 @@ from sqlalchemy import Float, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
+from app.core.time_utils import utc_to_iso
 
 
 class SensorReading(Base):
@@ -45,7 +46,7 @@ class SensorReading(Base):
     def to_dict(self) -> dict:
         return {
             "id": self.id,
-            "timestamp": self.timestamp.isoformat(),
+            "timestamp": utc_to_iso(self.timestamp),
             "ph": self.ph,
             "turbidity": self.turbidity,
             "tds": self.tds,

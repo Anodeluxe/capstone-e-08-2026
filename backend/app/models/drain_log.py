@@ -4,6 +4,7 @@ from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
+from app.core.time_utils import utc_to_iso
 
 
 class DrainLog(Base):
@@ -51,19 +52,16 @@ class DrainLog(Base):
     def to_dict(self) -> dict:
         return {
             "id": self.id,
-            "started_at": self.started_at.isoformat() if self.started_at else None,
-            "ended_at": self.ended_at.isoformat() if self.ended_at else None,
-            "threshold_crossed_at": (
-                self.threshold_crossed_at.isoformat()
-                if self.threshold_crossed_at else None
-            ),
+            "started_at": utc_to_iso(self.started_at),
+            "ended_at": utc_to_iso(self.ended_at),
+            "threshold_crossed_at": utc_to_iso(self.threshold_crossed_at),
             "event_observed": self.event_observed,
             "event_reason": self.event_reason,
             "cycle_estimate_hours": self.cycle_estimate_hours,
             "created_by": self.created_by,
             "notes": self.notes,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "created_at": utc_to_iso(self.created_at),
+            "updated_at": utc_to_iso(self.updated_at),
             "is_active": self.ended_at is None,
             "elapsed_hours": (
                 (datetime.utcnow() - self.started_at).total_seconds() / 3600.0

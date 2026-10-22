@@ -4,6 +4,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.time_utils import utc_to_iso
 from app.models.drain_log import DrainLog
 from app.models.sensor_reading import SensorReading
 from app.ml.features import MIN_HOURLY_ROWS
@@ -66,13 +67,10 @@ async def collection_readiness(db: AsyncSession = Depends(get_db)):
         "raw_rows": int(count_result.scalar() or 0),
         "hours_remaining": max(0, MIN_HOURLY_ROWS - hourly_rows),
         "active_drain_log_id": active.id,
-        "cycle_started_at": active.started_at.isoformat(),
-        "latest_timestamp": latest[0].isoformat() if latest else None,
+        "cycle_started_at": utc_to_iso(active.started_at),
+        "latest_timestamp": utc_to_iso(latest[0] if latest else None),
         "latest_score_overall": latest[1] if latest else None,
-        "threshold_crossed_at": (
-            active.threshold_crossed_at.isoformat()
-            if active.threshold_crossed_at else None
-        ),
+        "threshold_crossed_at": utc_to_iso(active.threshold_crossed_at),
     }
 
 

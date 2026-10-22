@@ -5,6 +5,7 @@ from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Te
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+from app.core.time_utils import utc_to_iso
 
 
 class ValveID(str, PyEnum):
@@ -31,7 +32,7 @@ class ValveState(Base):
         return {
             "id": self.id,
             "is_open": self.is_open,
-            "last_changed_at": self.last_changed_at.isoformat(),
+            "last_changed_at": utc_to_iso(self.last_changed_at),
             "last_changed_by": self.last_changed_by,
             "quality_score_at_close": self.quality_score_at_close,
         }
@@ -91,11 +92,11 @@ class PredictionResult(Base):
     def to_dict(self) -> dict:
         return {
             "id": self.id,
-            "computed_at": self.computed_at.isoformat(),
+            "computed_at": utc_to_iso(self.computed_at),
             "target_parameter": self.target_parameter,
             "valve_id": self.valve_id,
             "days_until_threshold": self.days_until_threshold,
-            "predicted_date": self.predicted_date.isoformat() if self.predicted_date else None,
+            "predicted_date": utc_to_iso(self.predicted_date),
             "confidence": self.confidence,
             "model_used": self.model_used,
             "rul_hours": self.rul_hours,

@@ -1,6 +1,8 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_serializer, field_validator
+
+from app.core.time_utils import serialize_utc
 
 
 # ─── Inbound (from ESP32 via MQTT) ────────────────────────────────────────────
@@ -75,6 +77,12 @@ class SensorReadingOut(BaseModel):
     anomaly_parameter: str | None
 
     model_config = {"from_attributes": True}
+
+    @field_serializer("timestamp")
+    def serialize_timestamp(self, v: datetime) -> datetime:
+        # Naive DB values are UTC by convention → mark with +00:00 so the
+        # frontend renders the correct local (WIB) time.
+        return serialize_utc(v)
 
 
 class SensorHistoryParams(BaseModel):

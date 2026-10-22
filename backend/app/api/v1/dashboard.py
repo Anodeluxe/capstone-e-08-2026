@@ -5,6 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.time_utils import utc_to_iso
 from app.models.sensor_reading import SensorReading
 from app.models.valve import PredictionResult, ValveState
 from app.services.valve_service import get_all_valve_states
@@ -43,7 +44,7 @@ async def get_dashboard_summary(db: AsyncSession = Depends(get_db)):
     trend_rows = trend_result.all()
     trend = [
         {
-            "hour": row.hour.isoformat(),
+            "hour": utc_to_iso(row.hour),
             "avg_score": round(row.avg_score, 2) if row.avg_score else None,
             "avg_ph": round(row.avg_ph, 2) if row.avg_ph else None,
             "avg_turbidity": round(row.avg_turbidity, 2) if row.avg_turbidity else None,

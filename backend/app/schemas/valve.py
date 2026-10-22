@@ -1,7 +1,9 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
+
+from app.core.time_utils import serialize_utc
 
 
 # ─── Valve ────────────────────────────────────────────────────────────────────
@@ -26,6 +28,10 @@ class ValveStateOut(BaseModel):
 
     model_config = {"from_attributes": True}
 
+    @field_serializer("last_changed_at")
+    def serialize_last_changed_at(self, v: datetime) -> datetime:
+        return serialize_utc(v)
+
 
 class ValveOverrideLogOut(BaseModel):
     id: int
@@ -37,6 +43,10 @@ class ValveOverrideLogOut(BaseModel):
     user_id: str | None
 
     model_config = {"from_attributes": True}
+
+    @field_serializer("overridden_at")
+    def serialize_overridden_at(self, v: datetime) -> datetime:
+        return serialize_utc(v)
 
 
 # ─── Notifications ────────────────────────────────────────────────────────────
@@ -64,6 +74,10 @@ class NotificationLogOut(BaseModel):
 
     model_config = {"from_attributes": True}
 
+    @field_serializer("sent_at")
+    def serialize_sent_at(self, v: datetime) -> datetime:
+        return serialize_utc(v)
+
 
 # ─── Predictions ──────────────────────────────────────────────────────────────
 
@@ -80,3 +94,7 @@ class PredictionResultOut(BaseModel):
     notification_sent: bool
 
     model_config = {"from_attributes": True, "protected_namespaces": ()}
+
+    @field_serializer("computed_at", "predicted_date")
+    def serialize_datetimes(self, v: datetime | None) -> datetime | None:
+        return serialize_utc(v)

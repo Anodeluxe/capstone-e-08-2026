@@ -1,17 +1,27 @@
 """
 ESP32 Hardware & Telemetry Simulator for DTETI UGM Capstone 2026 (E-08)
 
-This script simulates the physical ESP32 microcontroller, sensors, and solenoid valves:
+This script simulates the physical ESP32 microcontroller, sensors, and solenoid
+valves so the full backend pipeline can be tested locally, without the real
+device (which publishes straight to the production broker):
+
 1. Publishes periodic water quality telemetry to MQTT topic: toren/sensors
 2. Subscribes to valve command topic: toren/valves/cmd
-3. Simulates physical valve state transitions and publishes acknowledgment to: toren/valves/status
-4. Supports scenarios: 'normal', 'gradual' (degradation), 'spike' (contamination), and 'interactive'
+3. Simulates physical valve state transitions and publishes acknowledgment
+   to: toren/valves/status
+4. Supports scenarios: 'normal', 'gradual' (degradation), 'spike'
+   (contamination), and 'interactive'
+
+IMPORTANT — payloads must stay in sync with:
+  * backend schemas: app/schemas/sensor.py (ESP32SensorPayload / ESP32ValveAck)
+  * real firmware:    firmware/esp32/src/main.cpp (publishSensorReading)
 
 Usage:
     python simulate_esp32.py --scenario normal
     python simulate_esp32.py --scenario gradual --interval 3
     python simulate_esp32.py --scenario spike
     python simulate_esp32.py --scenario interactive
+    python simulate_esp32.py --server-timestamp   # mimic firmware (timestamp=0)
 """
 
 import argparse
@@ -19,7 +29,6 @@ import json
 import logging
 import os
 import random
-import signal
 import sys
 import threading
 import time
@@ -43,41 +52,50 @@ DEFAULT_TOPIC_SENSORS = "toren/sensors"
 DEFAULT_TOPIC_VALVES_CMD = "toren/valves/cmd"
 DEFAULT_TOPIC_VALVES_STATUS = "toren/valves/status"
 
+# Device id sent in telemetry (firmware uses DEVICE_ID from include/config.h)
+DEFAULT_DEVICE_ID = "toren_01"
+
+# Valve ids must match ValveID in backend/app/models/valve.py
+VALVE_IDS = ["bathroom", "kitchen", "laundry", "garden"]
+
 
 class ESP32Simulator:
     def __init__(
         self,
         broker: str = "localhost",
         port: int = 1883,
-        tank_id: str = "tank-1",
+        device_id: str = DEFAULT_DEVICE_ID,
         interval: float = 5.0,
         scenario: str = "normal",
         username: str | None = None,
         password: str | None = None,
+        use_server_timestamp: bool = False,
     ):
         self.broker = broker
         self.port = port
-        self.tank_id = tank_id
+        self.device_id = device_id
+        # Kept as an alias for readability in logs / older callers.
+        self.tank_id = device_id
         self.interval = interval
         self.scenario = scenario
         self.username = username
         self.password = password
+        # When True, send timestamp=0 so the backend stamps its own UTC time
+        # (this is what the real firmware does). Otherwise send a real epoch.
+        self.use_server_timestamp = use_server_timestamp
 
         self.running = False
         self.step_count = 0
 
-        # Physical state of valves
-        self.valves = {
-            "inlet": "open",
-            "outlet": "open",
-            "drain": "closed",
-        }
+        # Physical state of the 4 distribution valves
+        self.valves = {valve_id: "open" for valve_id in VALVE_IDS}
 
         # Current sensor readings baseline
         self.ph = 7.30
         self.turbidity = 1.00
         self.tds = 150.0
         self.temperature = 26.5
+        self.water_level = 82.0  # % of tank capacity
 
         # MQTT client setup
         self.client = mqtt.Client(
@@ -90,6 +108,8 @@ class ESP32Simulator:
         self.client.on_connect = self._on_connect
         self.client.on_message = self._on_message
         self.client.on_disconnect = self._on_disconnect
+
+    # ── MQTT callbacks ────────────────────────────────────────────────────────
 
     def _on_connect(self, client, userdata, flags, rc):
         if rc == 0:
@@ -114,44 +134,38 @@ class ESP32Simulator:
         except Exception as e:
             logger.error(f"Error processing received message: {e}")
 
-    def _handle_valve_command(self, payload: dict):
-        valve_type = payload.get("valve_type", "").lower()
-        action = payload.get("action", "").lower()
-        operator = payload.get("operator", "unknown")
-        reason = payload.get("reason", "none")
+    # ── Valve actuation ───────────────────────────────────────────────────────
 
-        if valve_type not in self.valves:
-            logger.warning(f"Ignored command for unknown valve type: '{valve_type}'")
+    def _handle_valve_command(self, payload: dict):
+        """Execute a valve command and publish an ESP32ValveAck-compatible ack."""
+        # Backend publishes "valve_id"; accept legacy "valve_type" as a fallback.
+        valve_id = (payload.get("valve_id") or payload.get("valve_type") or "").lower()
+        action = (payload.get("action") or "").lower()
+        operator = payload.get("triggered_by") or payload.get("operator", "unknown")
+
+        if valve_id not in self.valves:
+            logger.warning(f"Ignored command for unknown valve id: '{valve_id}'")
             return
 
         new_state = "open" if action in ("open", "on", "1") else "closed"
-        old_state = self.valves[valve_type]
-        self.valves[valve_type] = new_state
+        old_state = self.valves[valve_id]
+        self.valves[valve_id] = new_state
 
         logger.info(
-            f"[ACTUATOR] Valve '{valve_type}' state changed: {old_state.upper()} -> {new_state.upper()} "
-            f"(Operator: {operator}, Reason: {reason})"
+            f"[ACTUATOR] Valve '{valve_id}' state changed: {old_state.upper()} -> {new_state.upper()} "
+            f"(Triggered by: {operator})"
         )
 
-        # Simulate physical effect: if drain valve opens during contamination, clean water flushes
-        if valve_type == "drain" and new_state == "open":
-            logger.info("[SIMULATION] Drain valve OPENED! Flushing contaminated water, recovery accelerated.")
-            if self.turbidity > 2.0:
-                self.turbidity = max(1.2, self.turbidity - 5.0)
-            if self.tds > 200:
-                self.tds = max(160.0, self.tds - 100.0)
-
-        # Publish acknowledgment back to broker
+        # Publish acknowledgment back to broker (matches ESP32ValveAck schema)
         ack_payload = {
-            "tank_id": self.tank_id,
-            "valve_type": valve_type,
-            "state": new_state,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "status": "acknowledged",
-            "valves_state": self.valves,
+            "valve_id": valve_id,
+            "is_open": new_state == "open",
+            "timestamp": self._current_timestamp(),
         }
         self.client.publish(DEFAULT_TOPIC_VALVES_STATUS, json.dumps(ack_payload), qos=1)
         logger.info(f">> Published valve status ACK to {DEFAULT_TOPIC_VALVES_STATUS}: {ack_payload}")
+
+    # ── Physics ───────────────────────────────────────────────────────────────
 
     def update_sensor_physics(self):
         """Update simulated water physics based on active scenario and valve positions."""
@@ -166,7 +180,7 @@ class ESP32Simulator:
             self.temperature = round(max(24.0, min(29.0, 26.5 + noise(0.2))), 1)
 
         elif self.scenario == "gradual":
-            # Gradual degradation over time (simulates sediment accumulation or bio-growth)
+            # Gradual degradation over time (sediment accumulation / bio-growth)
             drift = self.step_count * 0.15
             self.turbidity = round(min(25.0, 0.9 + drift + noise(0.1)), 2)
             self.ph = round(max(5.8, 7.3 - (self.step_count * 0.03) + noise(0.05)), 2)
@@ -174,7 +188,7 @@ class ESP32Simulator:
             self.temperature = round(26.0 + noise(0.2), 1)
 
         elif self.scenario == "spike":
-            # Sudden heavy contamination event (e.g. pipe rupture, sewage backflow)
+            # Sudden heavy contamination event (pipe rupture, sewage backflow)
             if self.step_count < 3:
                 # Normal initially
                 self.ph = 7.3
@@ -187,23 +201,44 @@ class ESP32Simulator:
                 self.tds = round(min(950.0, 780.0 + noise(15.0)), 1)
             self.temperature = round(27.2 + noise(0.3), 1)
 
-        # If drain valve is open and fresh inlet is open, water cleans up over time
-        if self.valves["drain"] == "open":
-            self.turbidity = round(max(0.8, self.turbidity * 0.85), 2)
-            self.tds = round(max(140.0, self.tds * 0.90), 1)
-            self.ph = round(self.ph + (7.2 - self.ph) * 0.2, 2)
+        # ── Water level physics ───────────────────────────────────────────────
+        # Open valves = consumption (level drops); all closed = tank refills.
+        open_count = sum(1 for state in self.valves.values() if state == "open")
+        if open_count:
+            self.water_level = round(max(25.0, self.water_level - 0.4 * open_count + noise(0.1)), 1)
+        else:
+            self.water_level = round(min(95.0, self.water_level + 0.6 + noise(0.1)), 1)
+
+        # ── Water quality effect of valve positions ───────────────────────────
+        # Stagnation (all valves closed) degrades quality; an open supply line
+        # slowly brings parameters back toward clean-water baseline.
+        if open_count == 0:
+            self.turbidity = round(min(30.0, self.turbidity + 0.25 + noise(0.05)), 2)
+            self.tds = round(min(900.0, self.tds + 6.0 + noise(1.0)), 1)
+        elif open_count >= 2:
+            self.turbidity = round(max(0.8, self.turbidity * 0.95), 2)
+            self.tds = round(max(140.0, self.tds * 0.97), 1)
+            self.ph = round(self.ph + (7.2 - self.ph) * 0.1, 2)
+
+    # ── Telemetry ─────────────────────────────────────────────────────────────
+
+    def _current_timestamp(self) -> int:
+        """Epoch seconds (UTC), or 0 to let the server stamp the time."""
+        if self.use_server_timestamp:
+            return 0
+        return int(datetime.now(timezone.utc).timestamp())
 
     def publish_telemetry(self):
         """Construct sensor telemetry payload and publish to MQTT."""
+        # Field names/types mirror firmware/esp32/src/main.cpp exactly.
         payload = {
-            "tank_id": self.tank_id,
+            "device_id": self.device_id,
+            "timestamp": self._current_timestamp(),
             "ph": self.ph,
             "turbidity": self.turbidity,
             "tds": self.tds,
             "temperature": self.temperature,
-            "valves": self.valves,
-            "scenario": self.scenario,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "water_level": self.water_level,
         }
 
         json_data = json.dumps(payload)
@@ -211,11 +246,15 @@ class ESP32Simulator:
         logger.info(
             f">> Telemetry [{self.scenario}] -> pH={self.ph:.2f}, "
             f"Turbidity={self.turbidity:.2f} NTU, TDS={self.tds:.1f} ppm, "
-            f"Temp={self.temperature:.1f}°C | Valves: {self.valves}"
+            f"Temp={self.temperature:.1f}°C, Level={self.water_level:.1f}%"
         )
 
+    # ── Lifecycle ─────────────────────────────────────────────────────────────
+
     def start(self):
-        logger.info(f"Starting ESP32 Simulator (Scenario: {self.scenario}, Tank: {self.tank_id})")
+        logger.info(
+            f"Starting ESP32 Simulator (Scenario: {self.scenario}, Device: {self.device_id})"
+        )
         logger.info(f"Connecting to broker {self.broker}:{self.port}...")
 
         try:
@@ -276,6 +315,7 @@ def interactive_prompt(sim: ESP32Simulator):
                 sim.ph = 7.3
                 sim.turbidity = 0.8
                 sim.tds = 145.0
+                sim.water_level = round(min(95.0, sim.water_level + 10.0), 1)
                 logger.info("[COMMAND] Water parameters flushed back to normal baseline!")
             elif cmd in ("quit", "exit"):
                 sim.stop()
@@ -312,9 +352,17 @@ def main():
         help="Telemetry publication interval in seconds (default: 5.0)",
     )
     parser.add_argument(
-        "--tank-id",
-        default="tank-1",
-        help="Tank ID for sensor readings (default: tank-1)",
+        "--device-id",
+        default=DEFAULT_DEVICE_ID,
+        help=f"Device id sent in telemetry (default: {DEFAULT_DEVICE_ID})",
+    )
+    parser.add_argument(
+        "--server-timestamp",
+        action="store_true",
+        help=(
+            "Send timestamp=0 so the backend stamps its own UTC time. "
+            "This mimics the real firmware behaviour."
+        ),
     )
 
     args = parser.parse_args()
@@ -324,9 +372,10 @@ def main():
     sim = ESP32Simulator(
         broker=args.broker,
         port=args.port,
-        tank_id=args.tank_id,
+        device_id=args.device_id,
         interval=args.interval,
         scenario=actual_scenario,
+        use_server_timestamp=args.server_timestamp,
     )
 
     if args.scenario == "interactive":
