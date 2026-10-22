@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     app_name: str = "Toren Monitoring"
     app_env: str = "development"
     secret_key: str = "changeme"
+    enable_docs: bool = False  # True = Swagger /docs tetap aktif di production
 
     # ── Database ─────────────────────────────────────────────────────────────
     database_url: str = "postgresql+asyncpg://postgres:password@localhost:5432/toren_db"
@@ -68,6 +69,10 @@ class Settings(BaseSettings):
 
     # ── CORS ──────────────────────────────────────────────────────────────────
     allowed_origins: str = "http://localhost:3000"
+
+    @property
+    def docs_enabled(self) -> bool:
+        return self.app_env == "development" or self.enable_docs
 
     @property
     def whatsapp_targets(self) -> list[str]:
