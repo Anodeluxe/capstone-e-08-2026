@@ -14,26 +14,34 @@ cd "$REPO_DIR"
 
 TARGET="$1"
 
+update_env_file() {
+    local file="$1"
+    local db="$2"
+    if [ -f "$file" ]; then
+        if grep -q "^POSTGRES_DB=" "$file"; then
+            sed -i "s/^POSTGRES_DB=.*/POSTGRES_DB=$db/" "$file"
+        else
+            echo "POSTGRES_DB=$db" >> "$file"
+        fi
+    fi
+}
+
 if [ "$TARGET" == "test" ]; then
     echo "=================================================="
     echo "  SWITCHING BACKEND TO: toren_ml_test (TEST DB)   "
     echo "=================================================="
     
-    # Update or append POSTGRES_DB in backend/.env
-    if grep -q "^POSTGRES_DB=" backend/.env; then
-        sed -i 's/^POSTGRES_DB=.*/POSTGRES_DB=toren_ml_test/' backend/.env
-    else
-        echo "POSTGRES_DB=toren_ml_test" >> backend/.env
-    fi
+    update_env_file ".env" "toren_ml_test"
+    update_env_file "backend/.env" "toren_ml_test"
 
     echo "Restarting backend container..."
-    docker compose --profile app up -d backend
+    POSTGRES_DB=toren_ml_test docker compose --profile app up -d backend
     
     echo "Waiting for backend to be healthy..."
     sleep 3
     
     echo "Triggering prediction calculation on test data..."
-    curl -s http://127.0.0.1:8005/api/v1/predictions/run > /dev/null || true
+    curl -s "http://127.0.0.1:8005/api/v1/predictions/run?hours=169&mode=auto" > /dev/null || true
 
     echo ""
     echo "✅ SUCCESS: Backend is now connected to 'toren_ml_test'."
@@ -45,15 +53,11 @@ elif [ "$TARGET" == "prod" ]; then
     echo "  RESTORING BACKEND TO: toren_db (PRODUCTION DB)  "
     echo "=================================================="
     
-    # Update or append POSTGRES_DB in backend/.env
-    if grep -q "^POSTGRES_DB=" backend/.env; then
-        sed -i 's/^POSTGRES_DB=.*/POSTGRES_DB=toren_db/' backend/.env
-    else
-        echo "POSTGRES_DB=toren_db" >> backend/.env
-    fi
+    update_env_file ".env" "toren_db"
+    update_env_file "backend/.env" "toren_db"
 
     echo "Restarting backend container..."
-    docker compose --profile app up -d backend
+    POSTGRES_DB=toren_db docker compose --profile app up -d backend
     
     echo "Waiting for backend to be healthy..."
     sleep 3
