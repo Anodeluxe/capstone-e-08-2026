@@ -2,7 +2,7 @@
 
 import { format, parseISO } from 'date-fns'
 import { id as idLocale } from 'date-fns/locale'
-import { cn } from '@/lib/utils'
+import { cn, isStatisticalModel } from '@/lib/utils'
 import type { PredictionResult } from '@/types'
 
 interface Props {
@@ -38,6 +38,7 @@ export default function ETACard({ prediction, isLoading }: Props) {
   }
 
   const { days_until_threshold: days, predicted_date, confidence, model_used } = prediction
+  const isStat = isStatisticalModel(model_used)
   const confidencePct = confidence !== null ? (confidence * 100).toFixed(0) : null
 
   return (
@@ -52,16 +53,23 @@ export default function ETACard({ prediction, isLoading }: Props) {
         {days !== null ? `${days.toFixed(1)}` : '—'}
         <span className="text-xl font-normal ml-1">hari</span>
       </p>
-      {predicted_date && (
-        <p className="text-sm text-muted-foreground mb-4">
-          Perkiraan: {format(parseISO(predicted_date), 'dd MMMM yyyy', { locale: idLocale })}
+      {days === null ? (
+        <p className="text-xs text-amber-600 dark:text-amber-400 font-medium mb-3 flex items-center gap-1.5">
+          <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+          Kekurangan data untuk estimasi degradasi
         </p>
+      ) : (
+        predicted_date && (
+          <p className="text-sm text-muted-foreground mb-4">
+            Perkiraan: {format(parseISO(predicted_date), 'dd MMMM yyyy', { locale: idLocale })}
+          </p>
+        )
       )}
       <div className="flex flex-wrap gap-3 text-xs text-muted-foreground border-t border-border pt-3">
         <span>
           Model: <span className="text-foreground font-mono">{model_used}</span>
         </span>
-        {confidencePct !== null && (
+        {!isStat && confidencePct !== null && (
           <span>
             Kepercayaan: <span className="text-foreground font-mono">{confidencePct}%</span>
           </span>

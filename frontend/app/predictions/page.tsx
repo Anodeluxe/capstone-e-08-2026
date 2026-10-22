@@ -8,6 +8,7 @@ import TrendChart from '@/components/predictions/TrendChart'
 import { Button } from '@/components/ui/button'
 import { format, parseISO } from 'date-fns'
 import { id as idLocale } from 'date-fns/locale'
+import { isStatisticalModel } from '@/lib/utils'
 
 export default function PredictionsPage() {
   const { data: predictions, isLoading, refetch } = useLatestPredictions()
@@ -66,39 +67,48 @@ export default function PredictionsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {(predictions ?? []).slice(0, 20).map((p) => (
-                    <tr
-                      key={p.id}
-                      className="border-b border-border/60 last:border-0 hover:bg-muted/40 transition-colors"
-                    >
-                      <td className="px-4 py-2 text-muted-foreground whitespace-nowrap text-xs font-mono">
-                        {format(parseISO(p.computed_at), 'dd MMM yyyy HH:mm', { locale: idLocale })}
-                      </td>
-                      <td className="px-4 py-2 font-mono tabular-nums">
-                        {p.days_until_threshold !== null ? p.days_until_threshold.toFixed(1) : '—'}
-                      </td>
-                      <td className="px-4 py-2">
-                        {p.predicted_date
-                          ? format(parseISO(p.predicted_date), 'dd MMM yyyy', { locale: idLocale })
-                          : '—'}
-                      </td>
-                      <td className="px-4 py-2 font-mono tabular-nums">
-                        {p.confidence !== null ? `${(p.confidence * 100).toFixed(0)}%` : '—'}
-                      </td>
-                      <td className="px-4 py-2 text-muted-foreground font-mono">{p.model_used}</td>
-                      <td className="px-4 py-2">
-                        <span
-                          className={
-                            p.notification_sent
-                              ? 'text-xs text-emerald-600 dark:text-emerald-400'
-                              : 'text-xs text-muted-foreground'
-                          }
-                        >
-                          {p.notification_sent ? 'Terkirim' : '—'}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                  {(predictions ?? []).slice(0, 20).map((p) => {
+                    const isStat = isStatisticalModel(p.model_used)
+                    return (
+                      <tr
+                        key={p.id}
+                        className="border-b border-border/60 last:border-0 hover:bg-muted/40 transition-colors"
+                      >
+                        <td className="px-4 py-2 text-muted-foreground whitespace-nowrap text-xs font-mono">
+                          {format(parseISO(p.computed_at), 'dd MMM yyyy HH:mm', { locale: idLocale })}
+                        </td>
+                        <td className="px-4 py-2 font-mono tabular-nums">
+                          {p.days_until_threshold !== null ? (
+                            p.days_until_threshold.toFixed(1)
+                          ) : (
+                            <span className="text-xs text-amber-600 dark:text-amber-400 font-sans font-medium">
+                              Kekurangan data
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2">
+                          {p.predicted_date
+                            ? format(parseISO(p.predicted_date), 'dd MMM yyyy', { locale: idLocale })
+                            : '—'}
+                        </td>
+                        <td className="px-4 py-2 font-mono tabular-nums">
+                          {!isStat && p.confidence !== null ? `${(p.confidence * 100).toFixed(0)}%` : '—'}
+                        </td>
+                        <td className="px-4 py-2 text-muted-foreground font-mono">{p.model_used}</td>
+                        <td className="px-4 py-2">
+                          <span
+                            className={
+                              p.notification_sent
+                                ? 'text-xs text-emerald-600 dark:text-emerald-400'
+                                : 'text-xs text-muted-foreground'
+                            }
+                          >
+                            {p.notification_sent ? 'Terkirim' : '—'}
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
