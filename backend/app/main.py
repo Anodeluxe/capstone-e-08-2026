@@ -73,8 +73,8 @@ app = FastAPI(
         "detects anomalies, predicts degradation, and controls solenoid valves."
     ),
     lifespan=lifespan,
-    docs_url="/docs" if settings.app_env == "development" else None,
-    redoc_url="/redoc" if settings.app_env == "development" else None,
+    docs_url="/docs" if settings.docs_enabled else None,
+    redoc_url="/redoc" if settings.docs_enabled else None,
 )
 
 # ─── Middleware ────────────────────────────────────────────────────────────────

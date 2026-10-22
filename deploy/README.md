@@ -42,9 +42,9 @@ Isi `.env` (root):
 ```bash
 POSTGRES_PASSWORD=<hasil: openssl rand -hex 24>
 APP_ENV=production
-NEXT_PUBLIC_API_URL=https://toren.domainmu.com/api/v1
-NEXT_PUBLIC_WS_URL=wss://toren.domainmu.com/ws
-ALLOWED_ORIGINS=https://toren.domainmu.com
+NEXT_PUBLIC_API_URL=https://aminu.irsad.site/api/v1
+NEXT_PUBLIC_WS_URL=wss://aminu.irsad.site/ws
+ALLOWED_ORIGINS=https://capstone-e-08-2026.vercel.app
 ```
 
 Isi `backend/.env`:
@@ -94,45 +94,44 @@ docker compose --profile app logs -f backend
 
 ```bash
 sudo ufw allow 22/tcp      # SSH
-sudo ufw allow 80/tcp      # HTTP
-sudo ufw allow 443/tcp     # HTTPS
 sudo ufw allow 1883/tcp    # MQTT — WAJIB, ESP32 konek ke sini
 sudo ufw enable
 ```
 
-Port **5432 (database)** dan **8000 (backend)** sengaja tidak dibuka —
-keduanya ter-bind ke `127.0.0.1` dan hanya diakses lewat Nginx.
+Port **5432 (database)** dan **8005 (backend)** sengaja tidak dibuka —
+keduanya ter-bind ke `127.0.0.1`. Backend diakses publik lewat Cloudflare
+Tunnel (koneksi keluar dari server), jadi port 80/443 tidak perlu dibuka.
 
 ---
 
-## 5. HTTPS (wajib untuk PWA)
+## 5. Publik via Cloudflare Tunnel (HTTPS)
 
-Service worker (`frontend/public/sw.js`) hanya jalan di **secure context**.
-Tanpa HTTPS, PWA tidak bisa di-install dari HP.
-
-Butuh domain yang sudah diarahkan (A record) ke IP server.
-
-```bash
-# 1. Issu sertifikat
-sudo docker run --rm \
-  -v $(pwd)/deploy/certbot-webroot:/var/www/certbot \
-  -v $(pwd)/deploy/certbot:/etc/letsencrypt \
-  certbot/certbot certonly --webroot -w /var/www/certbot \
-  -d toren.domainmu.com --agree-tos -m email@domainmu.com --non-interactive
-
-# 2. Aktifkan konfigurasi TLS
-cp deploy/nginx-tls.conf deploy/nginx.conf
-# (edit nama sertifikat di dalam file bila domain-nya berbeda)
-
-# 3. Restart nginx
-docker compose --profile app restart nginx
-```
-
-Renewal sertifikat otomatis (cron di host):
+Backend keluar di **https://aminu.irsad.site** lewat tunnel `cloudflared`
+yang sudah jalan di host (systemd, config `/etc/cloudflared/config.yml`).
+Cloudflare yang menangani HTTPS, dan WebSocket `/ws` ikut jalan tanpa
+setting tambahan.
 
 ```bash
-0 3 * * 0 cd /path/ke/capstone-e-08-2026 && docker run --rm -v $(pwd)/deploy/certbot-webroot:/var/www/certbot -v $(pwd)/deploy/certbot:/etc/letsencrypt certbot/certbot renew --quiet && docker compose --profile app restart nginx
+# 1. DNS → tunnel (sudah dilakukan, cukup sekali)
+cloudflared tunnel route dns e952bc2e-7d1e-4740-9073-7f65713e68df aminu.irsad.site
+
+# 2. Tambah ingress SEBELUM baris `- service: http_status:404`
+sudo nano /etc/cloudflared/config.yml
+#   - hostname: aminu.irsad.site
+#     service: http://localhost:8005
+
+# 3. Validasi & restart tunnel
+sudo cloudflared --config /etc/cloudflared/config.yml tunnel ingress validate
+sudo cloudflared --config /etc/cloudflared/config.yml tunnel ingress rule https://aminu.irsad.site
+sudo systemctl restart cloudflared
 ```
+
+Cek: `curl https://aminu.irsad.site/health` dan Swagger di
+`https://aminu.irsad.site/docs` (aktif selama `ENABLE_DOCS=true`).
+
+> MQTT (1883) **tidak** lewat Cloudflare — ESP32 konek langsung ke IP
+> server, karena tunnel tidak bisa meneruskan TCP mentah ke perangkat
+> tanpa `cloudflared` di sisi client.
 
 ---
 
@@ -212,11 +211,9 @@ Internet
    │
    ├── :1883 ──────────────► toren_mqtt (Mosquitto) ◄──── ESP32 (publisher)
    │
-   └── :80/:443 ───────────► toren_nginx
-                              ├── /      ─► toren_frontend (Next.js standalone)
-                              ├── /api/  ─► toren_backend  (FastAPI)
-                              └── /ws    ─► toren_backend  (WebSocket)
-                                                   │
+   └── https://aminu.irsad.site ─► Cloudflare Tunnel (cloudflared di host)
+                                        └─► 127.0.0.1:8005 ─► toren_backend (FastAPI :8000)
+                                                   │         /api/v1, /ws, /docs
                                                    ├──► toren_db (TimescaleDB) — jaringan internal
                                                    └──► toren_mqtt
 ```

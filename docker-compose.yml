@@ -6,14 +6,16 @@
 #         development backend/frontend jalan di host (venv + npm run dev).
 #
 #   docker compose --profile app up -d --build
-#       → infrastruktur + backend + frontend + nginx (stack produksi lengkap).
-#         Semua app service memakai profile "app" supaya tidak ikut jalan
-#         pada development.
+#       → infrastruktur + backend. Frontend di-deploy terpisah.
+#         Backend memakai profile "app" supaya tidak ikut jalan pada
+#         development.
 #
 # Detail penting:
-#   * Port DB (5432) dan backend (8000) di-bind ke 127.0.0.1 → hanya bisa
-#     diakses dari server itu sendiri, tidak terekspos ke internet.
-#   * Port MQTT (1883) dibiarkan publik karena ESP32 harus konek dari luar.
+#   * Port DB (5432) dan backend (8005 → container 8000) di-bind ke
+#     127.0.0.1 → hanya bisa diakses dari server itu sendiri. Akses publik
+#     ke backend lewat Cloudflare Tunnel (lihat deploy/README.md).
+#   * Port MQTT (1883) dibiarkan publik karena ESP32 harus konek dari luar
+#     (Cloudflare Tunnel tidak bisa meneruskan TCP mentah ke ESP32).
 # ─────────────────────────────────────────────────────────────────────────────
 
 name: toren-monitoring
@@ -31,7 +33,7 @@ services:
     ports:
       # Host-only: untuk development (backend jalan di host).
       # Di produksi, hapus baris ini agar DB hanya reachable via jaringan internal.
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
     volumes:
       - toren_db_data:/var/lib/postgresql/data
     healthcheck:
@@ -79,12 +81,15 @@ services:
       - ./backend/.env
     environment:
       APP_ENV: ${APP_ENV:-production}
+      ENABLE_DOCS: ${ENABLE_DOCS:-true}
       # Hostname = nama service (bukan localhost) karena backend jadi container.
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-password}@timescaledb:5432/${POSTGRES_DB:-toren_db}
       DATABASE_SYNC_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-password}@timescaledb:5432/${POSTGRES_DB:-toren_db}
       MQTT_BROKER_HOST: mosquitto
       MQTT_BROKER_PORT: 1883
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,https://capstone-e-08-2026.vercel.app}
+      # localhost di dalam container = container itu sendiri, bukan host.
+      WAHA_BASE_URL: ${WAHA_BASE_URL:-http://host.docker.internal:3000}
     extra_hosts:
       # Supaya backend bisa menjangkau WAHA yang jalan di host server.
       - "host.docker.internal:host-gateway"
@@ -94,12 +99,16 @@ services:
       mosquitto:
         condition: service_healthy
     ports:
-      # Host-only — Nginx yang mengekspos ke publik.
-      - "127.0.0.1:8005:8005"
+      # Host-only — Cloudflare Tunnel yang mengekspos ke publik.
+      # Uvicorn di dalam container listen di 8000 (lihat backend/Dockerfile).
+      - "127.0.0.1:${BACKEND_PORT:-8005}:8000"
     networks: [toren]
 
 volumes:
   toren_db_data:
+    # Nama dipatok ke volume lama (project "capstone-e-08-2026") supaya data
+    # tidak hilang walau nama project compose sudah jadi "toren-monitoring".
+    name: capstone-e-08-2026_toren_db_data
 
 networks:
   toren:

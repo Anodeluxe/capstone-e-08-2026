@@ -36,7 +36,7 @@ set -a
 set +a
 
 # ── Peringatan produksi ──────────────────────────────────────────────────────
-if grep -q "^POSTGRES_PASSWORD=password$" .env; then
+if grep -qE "^POSTGRES_PASSWORD=(password|ganti-dengan-password-kuat)$" .env; then
     echo "⚠️  POSTGRES_PASSWORD masih 'password'. Ganti untuk produksi!"
 fi
 if grep -q "^SECRET_KEY=changeme$" backend/.env; then
@@ -48,9 +48,8 @@ case "${1:-up}" in
         $COMPOSE up -d --build
         echo ""
         echo "✅ Stack berjalan. Cek:"
-        echo "   - Backend : http://localhost:8000/health"
-        echo "   - Frontend: http://localhost:3000"
-        echo "   - Nginx   : http://localhost"
+        echo "   - Backend : http://localhost:${BACKEND_PORT:-8005}/health"
+        echo "   - Publik  : via Cloudflare Tunnel (deploy/README.md)"
         ;;
     logs)
         $COMPOSE logs -f backend
