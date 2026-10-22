@@ -76,6 +76,10 @@ services:
       - "3008:3000"
     environment:
       - WHATSAPP_DEFAULT_ENGINE=NOWEB
+      - WAHA_DASHBOARD_ENABLED=true
+      - WAHA_DASHBOARD_USERNAME=admin
+      - WAHA_DASHBOARD_PASSWORD=torenmonitoring
+      - WAHA_API_KEY=torensecretkey2026
     volumes:
       - waha_data:/app/.sessions
     networks: [toren]
@@ -102,6 +106,7 @@ services:
       MQTT_BROKER_PORT: 1883
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,https://capstone-e-08-2026.vercel.app,https://amin-u.vercel.app,https://aminu.irsad.site}
       WAHA_BASE_URL: ${WAHA_BASE_URL:-http://waha:3000}
+      WAHA_API_KEY: ${WAHA_API_KEY:-torensecretkey2026}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:

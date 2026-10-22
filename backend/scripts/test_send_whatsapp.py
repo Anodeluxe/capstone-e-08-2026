@@ -34,9 +34,24 @@ async def main():
         default="test",
         help="Type of notification alert to send",
     )
+    parser.add_argument(
+        "--base-url",
+        default="http://localhost:3008",
+        help="WAHA Base URL (default: http://localhost:3008)",
+    )
+    parser.add_argument(
+        "--api-key",
+        default="torensecretkey2026",
+        help="WAHA API Key (default: torensecretkey2026)",
+    )
     args = parser.parse_args()
 
     settings = get_settings()
+    if args.base_url:
+        settings.waha_base_url = args.base_url
+    if args.api_key:
+        settings.waha_api_key = args.api_key
+
     chat_id = notification_service.format_waha_chat_id(args.target)
 
     print("==================================================")
@@ -44,6 +59,7 @@ async def main():
     print("==================================================")
     print(f"Provider     : {settings.whatsapp_provider}")
     print(f"WAHA Base URL: {settings.waha_base_url}")
+    print(f"WAHA API Key : {'*****' if settings.waha_api_key else '(none)'}")
     print(f"Session      : {settings.waha_session}")
     print(f"Target Input : {args.target}")
     print(f"Formatted ID : {chat_id}")
@@ -69,7 +85,8 @@ async def main():
         if session_state != "WORKING":
             print(f"\n⚠️  WAHA session '{settings.waha_session}' status is: {session_state}")
             print("   Please scan the QR code to pair your WhatsApp account:")
-            print("   👉 Open: http://localhost:3008/dashboard")
+            print("   👉 Open: http://localhost:3008/dashboard (or via Tailscale: http://100.64.123.87:3008/dashboard)")
+            print("   👉 Login with User: admin | Pass: torenmonitoring")
             return
 
         print("✅ WAHA is online and WhatsApp session is CONNECTED (WORKING).")
