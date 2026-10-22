@@ -1,0 +1,865 @@
+/*
+ * =====================================================================
+ *  WaterQ E08 — Firmware Monitoring Kualitas & Distribusi Air (Cloud MQTT)
+ *  Tim E-08 · Board: ESP32 WROOM-32 DevKit 38 pin · PCB rev 3.2 / 3.2-1L
+ * =====================================================================
+ *  Fungsi:
+ *   - Baca 5 sensor tiap 10 detik (pH, kekeruhan, TDS, suhu, level tangki)
+ *   - Tentukan kelas kualitas air -> buka/tutup 4 valve NC otomatis
+ *   - Dashboard web lokal real-time (http://waterq.local atau IP ESP32)
+ *   - Integrasi Cloud MQTT (broker.emqx.io) -> kirim data ke Web App Backend
+ *     & terima kontrol buka/tutup valve dari Web App Dashboard Next.js
+ *   - API JSON (/api/data, /api/history) + log CSV di Serial Monitor
+ *   - Opsional: kirim JSON ke server sendiri (POST_URL)
+ *   - Kalibrasi lewat Serial Monitor, tersimpan di flash (NVS)
+ *
+ *  Pin (sesuai schematic rev 3.2):
+ *   GPIO32 pH (PH-4502C Po, lewat pembagi 10k/15k)
+ *   GPIO34 Turbidity AO (lewat pembagi 10k/15k)
+ *   GPIO35 TDS (modul disuplai 3V3, langsung)
+ *   GPIO16 DS18B20 DQ (pull-up 4k7 ke 3V3)
+ *   GPIO5  Ultrasonik TRIG, GPIO17 ECHO (lewat pembagi 1k/2k)
+ *   GPIO23/22/21/19 -> relay IN1..IN4 (aktif LOW)
+ *     IN1 kamar mandi · IN2 dapur · IN3 mesin cuci · IN4 taman
+ *
+ *  Valve Normally Closed, relay disambung COM–NO:
+ *     GPIO LOW  -> relay ON  -> valve TERBUKA
+ *     GPIO HIGH -> relay OFF -> valve TERTUTUP (juga saat ESP32 mati)
+ *
+ *  Board  : "ESP32 Dev Module" (paket esp32 by Espressif, v2.x atau v3.x)
+ *  Library:
+ *   - OneWire (Paul Stoffregen)
+ *   - DallasTemperature (Miles Burton)
+ *   - PubSubClient (Nick O'Leary)  <-- Install di Library Manager Arduino IDE
+ *  Serial : 115200 baud, ketik "help" untuk daftar perintah
+ * =====================================================================
+ */
+
+#include <WiFi.h>
+#include <WebServer.h>
+#include <ESPmDNS.h>
+#include <HTTPClient.h>
+#include <Preferences.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
+#include <PubSubClient.h>
+#include <time.h>
+#include <math.h>
+
+// =====================================================================
+// 1. KONFIGURASI — ubah bagian ini saja
+// =====================================================================
+const char* WIFI_SSID = "minamine";        // SSID WiFi di lokasi ESP32
+const char* WIFI_PASS = "12345678";        // password WiFi
+const char* AP_SSID   = "Obeng";           // hotspot cadangan kalau WiFi gagal
+const char* AP_PASS   = "renjun123";       // minimal 8 karakter
+const char* HOSTNAME  = "waterq";          // -> http://waterq.local
+
+// --- Konfigurasi Cloud MQTT (Terhubung ke Backend Server) ---
+const char* MQTT_BROKER       = "broker.emqx.io";
+const int   MQTT_PORT         = 1883;
+const char* DEVICE_ID         = "toren_01";
+const char* TOPIC_SENSORS     = "e08_ugm_2026/toren/sensors";
+const char* TOPIC_VALVE_CMD   = "e08_ugm_2026/toren/valves/cmd";
+const char* TOPIC_VALVE_STAT  = "e08_ugm_2026/toren/valves/status";
+
+// Opsional: kirim data tiap sampling ke server sendiri (HTTP POST JSON).
+// Kosongkan ("") kalau tidak dipakai. Contoh: "http://192.168.1.10:5000/api/ingest"
+const char* POST_URL  = "";
+
+const uint32_t SAMPLE_INTERVAL_MS = 10000;  // 10 detik
+const long     GMT_OFFSET_SEC     = 7 * 3600; // WIB (UTC+7)
+
+// --- Tangki (ukur di lapangan) ---
+const float TANK_DEPTH_CM   = 100.0f; // jarak sensor ultrasonik ke DASAR tangki
+const float FULL_GAP_CM     = 25.0f;  // jarak sensor ke permukaan air saat PENUH
+                                       // (JSN-SR04T minimal ±20–25 cm, HC-SR04 ±3 cm)
+const float TANK_CAPACITY_L = 500.0f; // kapasitas tangki (liter) saat penuh
+const float LEVEL_MIN_PCT   = 10.0f;  // di bawah ini semua valve ditutup
+const bool  LOW_LEVEL_CUTOFF = true;  // false = abaikan proteksi level rendah
+
+// --- Ambang kualitas air ---
+// Kelas A mengikuti baku mutu air minum Permenkes RI No. 2 Tahun 2023
+// (pH 6,5–8,5 · kekeruhan < 3 NTU · TDS < 300 mg/L).
+// Kelas B dan C adalah ambang rancangan tim -> sesuaikan dengan acuan laporan.
+struct Limit { float phMin, phMax, ntuMax, tdsMax; };
+const Limit LIM_A = {6.5f, 8.5f,   3.0f,  300.0f}; // layak semua keperluan
+const Limit LIM_B = {6.0f, 9.0f,  25.0f, 1000.0f}; // bukan untuk dapur/konsumsi
+const Limit LIM_C = {5.0f, 10.0f, 100.0f, 2000.0f}; // hanya siram taman
+//                  di luar C            -> kelas D, semua valve tutup
+
+// Valve yang boleh dibuka per kelas: {kamar mandi, dapur, mesin cuci, taman}
+const bool VALVE_RULE[4][4] = {
+  /* A */ {true,  true,  true,  true },
+  /* B */ {true,  false, true,  true },
+  /* C */ {false, false, false, true },
+  /* D */ {false, false, false, false}
+};
+
+// Kelas baru harus muncul berturut-turut sebanyak ini sebelum valve berubah
+// (2 x 10 s = 20 s) supaya relay tidak "cetak-cetek". Kelas D langsung berlaku.
+const uint8_t CONFIRM_COUNT = 2;
+
+// =====================================================================
+// 2. PIN — sesuai PCB rev 3.2, jangan diubah kalau tidak ganti hardware
+// =====================================================================
+const int PIN_PH   = 32;
+const int PIN_TURB = 34;
+const int PIN_TDS  = 35;
+const int PIN_DS   = 16;
+const int PIN_TRIG = 5;
+const int PIN_ECHO = 17;
+const int PIN_RELAY[4] = {23, 22, 21, 19};
+const char* VALVE_NAME[4] = {"Kamar mandi", "Dapur", "Mesin cuci", "Taman"};
+const char* VALVE_ID_STR[4] = {"bathroom", "kitchen", "laundry", "garden"};
+
+// Pembagi tegangan pH & turbidity: 10k (atas) / 15k (bawah) -> Vadc = 0,6 x Vsensor
+const float DIV_RATIO = 15.0f / (10.0f + 15.0f);
+
+// =====================================================================
+// 3. VARIABEL GLOBAL
+// =====================================================================
+WebServer server(80);
+Preferences prefs;
+OneWire oneWire(PIN_DS);
+DallasTemperature ds18(&oneWire);
+WiFiClient espWifiClient;
+PubSubClient mqtt(espWifiClient);
+
+struct Calib {
+  float ph7V;        // tegangan Po (V, sebelum pembagi) di buffer pH 7
+  float ph4V;        // tegangan Po di buffer pH 4
+  float turbClearV;  // tegangan AO di air jernih (0 NTU)
+  float tdsK;        // faktor K sensor TDS
+} cal;
+
+struct Reading {
+  char  time[24];
+  float ph, ntu, tds, ec, tempC, distCm, levelPct, volumeL;
+  float vPh, vTurb, vTds;    // tegangan sensor (untuk debug/kalibrasi)
+  bool  tempOk, distOk;
+  char  cls;                 // 'A'..'D'
+  char  reason[64];
+} cur;
+
+bool    autoMode = true;
+bool    valveOpen[4] = {false, false, false, false};
+bool    prevValveOpen[4] = {false, false, false, false};
+bool    manualReq[4] = {false, false, false, false};
+char    appliedCls = 'D';
+char    pendingCls = 'D';
+uint8_t pendingCnt = 0;
+float   lastGoodTemp = 25.0f;
+float   lastGoodLevel = 80.0f;
+uint32_t sampleCount = 0;
+uint32_t lastSampleMs = 0;
+uint32_t lastMqttRetryMs = 0;
+bool    staMode = false;
+
+// Riwayat 90 sampel (15 menit) untuk grafik di dashboard
+const int HIST_N = 90;
+struct HistPoint { uint32_t t; float ph, ntu, tds, temp, level; };
+HistPoint hist[HIST_N];
+int histHead = 0, histCount = 0;
+
+String serialLine;
+
+// Prototipe fungsi MQTT
+void publishValveAck(int idx);
+void syncAllValvesToMqtt();
+
+// =====================================================================
+// 4. VALVE / RELAY
+// =====================================================================
+void setValve(int i, bool open) {
+  bool changed = (valveOpen[i] != open);
+  valveOpen[i] = open;
+  digitalWrite(PIN_RELAY[i], open ? LOW : HIGH);   // aktif LOW
+  if (changed && mqtt.connected()) {
+    publishValveAck(i);
+  }
+}
+
+void initRelays() {
+  for (int i = 0; i < 4; i++) {
+    digitalWrite(PIN_RELAY[i], HIGH);  // tulis HIGH DULU supaya relay tidak sempat ON
+    pinMode(PIN_RELAY[i], OUTPUT);
+    valveOpen[i] = false;
+    prevValveOpen[i] = false;
+  }
+}
+
+// =====================================================================
+// 5. SENSOR
+// =====================================================================
+// Rata-rata 32 sampel ADC setelah membuang 8 terendah & 8 tertinggi (Volt)
+float readAdcVolt(int pin) {
+  const int N = 32;
+  uint16_t v[N];
+  for (int i = 0; i < N; i++) {
+    v[i] = analogReadMilliVolts(pin);
+    delay(2);
+  }
+  for (int i = 1; i < N; i++) {            // insertion sort
+    uint16_t k = v[i]; int j = i - 1;
+    while (j >= 0 && v[j] > k) { v[j + 1] = v[j]; j--; }
+    v[j + 1] = k;
+  }
+  uint32_t sum = 0;
+  for (int i = 8; i < N - 8; i++) sum += v[i];
+  return (sum / (float)(N - 16)) / 1000.0f;
+}
+
+float phFromVolt(float v) {
+  float slope = (cal.ph4V - cal.ph7V) / (4.0f - 7.0f); // V per satuan pH (negatif)
+  if (fabsf(slope) < 0.01f) slope = -0.18f;            // jaga-jaga kalibrasi rusak
+  return 7.0f + (v - cal.ph7V) / slope;
+}
+
+// Kurva DFRobot SEN0189 (V pada suplai 5 V), digeser sesuai kalibrasi air jernih
+float ntuFromVolt(float v) {
+  float va = v + (4.20f - cal.turbClearV);
+  if (va >= 4.20f) return 0.0f;
+  if (va < 2.50f)  return 3000.0f;
+  float ntu = -1120.4f * va * va + 5742.3f * va - 4352.9f;
+  return ntu < 0 ? 0 : ntu;
+}
+
+// Rumus DFRobot Gravity TDS dengan kompensasi suhu (hasil ppm, faktor 0,5)
+float tdsFromVolt(float v, float tempC) {
+  float cv = v / (1.0f + 0.02f * (tempC - 25.0f));
+  float tds = (133.42f * cv * cv * cv - 255.86f * cv * cv + 857.39f * cv) * 0.5f * cal.tdsK;
+  return tds < 0 ? 0 : tds;
+}
+
+// Jarak ultrasonik (cm), median 5 pantulan, kecepatan suara dikompensasi suhu
+float readDistanceCm(float tempC) {
+  float c = 331.3f + 0.606f * tempC;     // m/s
+  float d[5]; int n = 0;
+  for (int i = 0; i < 5; i++) {
+    digitalWrite(PIN_TRIG, LOW);  delayMicroseconds(4);
+    digitalWrite(PIN_TRIG, HIGH); delayMicroseconds(20);
+    digitalWrite(PIN_TRIG, LOW);
+    unsigned long us = pulseIn(PIN_ECHO, HIGH, 30000UL);   // maks ±5 m
+    if (us > 0) d[n++] = us * 1e-6f * c * 100.0f / 2.0f;
+    delay(60);
+  }
+  if (n == 0) return NAN;
+  for (int i = 1; i < n; i++) {
+    float k = d[i]; int j = i - 1;
+    while (j >= 0 && d[j] > k) { d[j + 1] = d[j]; j--; }
+    d[j + 1] = k;
+  }
+  return d[n / 2];
+}
+
+void nowString(char* buf, size_t len) {
+  struct tm t;
+  if (staMode && getLocalTime(&t, 0)) {
+    strftime(buf, len, "%Y-%m-%d %H:%M:%S", &t);
+  } else {
+    uint32_t s = millis() / 1000;
+    snprintf(buf, len, "uptime %lu:%02lu:%02lu",
+             (unsigned long)(s / 3600), (unsigned long)(s / 60 % 60), (unsigned long)(s % 60));
+  }
+}
+
+// =====================================================================
+// 6. KLASIFIKASI & KEPUTUSAN VALVE
+// =====================================================================
+bool inLimit(const Limit& L, float ph, float ntu, float tds) {
+  return ph >= L.phMin && ph <= L.phMax && ntu <= L.ntuMax && tds <= L.tdsMax;
+}
+
+char classify(Reading& r) {
+  // Sensor analog dianggap error kalau tegangannya mentok 0 atau mentok atas ADC
+  bool phErr   = r.vPh   < 0.05f || r.vPh   > 4.95f || isnan(r.ph);
+  bool turbErr = r.vTurb < 0.05f;
+  bool tdsErr  = r.vTds  > 3.05f;
+  if (phErr || turbErr || tdsErr) {
+    snprintf(r.reason, sizeof(r.reason), "Sensor error:%s%s%s",
+             phErr ? " pH" : "", turbErr ? " kekeruhan" : "", tdsErr ? " TDS" : "");
+    return 'D';
+  }
+  if (inLimit(LIM_A, r.ph, r.ntu, r.tds)) { strcpy(r.reason, "Layak semua keperluan"); return 'A'; }
+  if (inLimit(LIM_B, r.ph, r.ntu, r.tds)) { strcpy(r.reason, "Tidak untuk dapur/konsumsi"); return 'B'; }
+  if (inLimit(LIM_C, r.ph, r.ntu, r.tds)) { strcpy(r.reason, "Hanya untuk siram taman"); return 'C'; }
+  strcpy(r.reason, "Kualitas buruk, semua ditutup");
+  return 'D';
+}
+
+void applyValves() {
+  bool lowLevel = LOW_LEVEL_CUTOFF && cur.distOk && cur.levelPct < LEVEL_MIN_PCT;
+  if (!autoMode) {
+    for (int i = 0; i < 4; i++) setValve(i, manualReq[i]);
+    return;
+  }
+  // Konfirmasi kelas (anti cetak-cetek), kelas D langsung berlaku
+  if (cur.cls == 'D') {
+    appliedCls = 'D'; pendingCls = 'D'; pendingCnt = CONFIRM_COUNT;
+  } else if (cur.cls == pendingCls) {
+    if (pendingCnt < CONFIRM_COUNT) pendingCnt++;
+    if (pendingCnt >= CONFIRM_COUNT) appliedCls = pendingCls;
+  } else {
+    pendingCls = cur.cls; pendingCnt = 1;
+    if (CONFIRM_COUNT <= 1) appliedCls = pendingCls;
+  }
+  int row = appliedCls - 'A';
+  for (int i = 0; i < 4; i++) setValve(i, !lowLevel && VALVE_RULE[row][i]);
+}
+
+// =====================================================================
+// 7. SAMPLING (dipanggil tiap 10 detik)
+// =====================================================================
+void takeSample() {
+  Reading& r = cur;
+  nowString(r.time, sizeof(r.time));
+
+  // Suhu: konversi sudah diminta 10 s lalu (non-blocking), tinggal dibaca
+  float t = ds18.getTempCByIndex(0);
+  r.tempOk = !(t == DEVICE_DISCONNECTED_C || t < -20.0f || t > 80.0f || t == 85.0f);
+  r.tempC  = r.tempOk ? t : NAN;
+  if (r.tempOk) lastGoodTemp = t;
+  ds18.requestTemperatures();            // minta konversi untuk sampel berikutnya
+  float tComp = lastGoodTemp;            // suhu untuk kompensasi TDS & ultrasonik
+
+  r.vPh   = readAdcVolt(PIN_PH)   / DIV_RATIO;
+  r.vTurb = readAdcVolt(PIN_TURB) / DIV_RATIO;
+  r.vTds  = readAdcVolt(PIN_TDS);
+
+  r.ph  = phFromVolt(r.vPh);
+  r.ntu = ntuFromVolt(r.vTurb);
+  r.tds = tdsFromVolt(r.vTds, tComp);
+  r.ec  = r.tds * 2.0f;                  // µS/cm (TDS = EC x 0,5)
+
+  r.distCm = readDistanceCm(tComp);
+  r.distOk = !isnan(r.distCm) && r.distCm > 2.0f && r.distCm < TANK_DEPTH_CM + 30.0f;
+  if (r.distOk) {
+    float pct = (TANK_DEPTH_CM - r.distCm) / (TANK_DEPTH_CM - FULL_GAP_CM) * 100.0f;
+    r.levelPct = constrain(pct, 0.0f, 100.0f);
+    r.volumeL  = r.levelPct / 100.0f * TANK_CAPACITY_L;
+    lastGoodLevel = r.levelPct;
+  } else {
+    r.levelPct = NAN; r.volumeL = NAN;
+  }
+
+  r.cls = classify(r);
+  applyValves();
+  sampleCount++;
+
+  hist[histHead] = { millis() / 1000, r.ph, r.ntu, r.tds, r.tempC, r.levelPct };
+  histHead = (histHead + 1) % HIST_N;
+  if (histCount < HIST_N) histCount++;
+}
+
+// =====================================================================
+// 8. FORMAT DATA (CSV, JSON LOKAL, & CLOUD MQTT)
+// =====================================================================
+String fnum(float v, int dec) {          // NaN -> "null" (JSON)
+  if (isnan(v) || isinf(v)) return "null";
+  return String(v, dec);
+}
+String fcsv(float v, int dec) {          // NaN -> kosong (CSV)
+  if (isnan(v) || isinf(v)) return "";
+  return String(v, dec);
+}
+
+void printCsvHeader() {
+  Serial.println(F("waktu,ph,kekeruhan_ntu,tds_ppm,ec_uscm,suhu_c,jarak_cm,level_pct,volume_l,"
+                   "kelas,v_mandi,v_dapur,v_cuci,v_taman,mode,vph,vturb,vtds"));
+}
+
+void printCsvRow() {
+  const Reading& r = cur;
+  String s = String(r.time) + "," + fcsv(r.ph, 2) + "," + fcsv(r.ntu, 1) + "," +
+             fcsv(r.tds, 0) + "," + fcsv(r.ec, 0) + "," + fcsv(r.tempC, 2) + "," +
+             fcsv(r.distCm, 1) + "," + fcsv(r.levelPct, 1) + "," + fcsv(r.volumeL, 0) + "," +
+             String(r.cls);
+  for (int i = 0; i < 4; i++) s += valveOpen[i] ? ",1" : ",0";
+  s += autoMode ? ",AUTO" : ",MANUAL";
+  s += "," + fcsv(r.vPh, 3) + "," + fcsv(r.vTurb, 3) + "," + fcsv(r.vTds, 3);
+  Serial.println(s);
+}
+
+String jsonData() {
+  const Reading& r = cur;
+  String j;
+  j.reserve(900);
+  j  = "{\"waktu\":\"" + String(r.time) + "\"";
+  j += ",\"sampel\":" + String(sampleCount);
+  j += ",\"interval_s\":" + String(SAMPLE_INTERVAL_MS / 1000);
+  j += ",\"ph\":" + fnum(r.ph, 2);
+  j += ",\"kekeruhan_ntu\":" + fnum(r.ntu, 1);
+  j += ",\"tds_ppm\":" + fnum(r.tds, 0);
+  j += ",\"ec_uscm\":" + fnum(r.ec, 0);
+  j += ",\"suhu_c\":" + fnum(r.tempC, 2);
+  j += ",\"jarak_cm\":" + fnum(r.distCm, 1);
+  j += ",\"level_pct\":" + fnum(r.levelPct, 1);
+  j += ",\"volume_l\":" + fnum(r.volumeL, 0);
+  j += ",\"kelas\":\"" + String(r.cls) + "\"";
+  j += ",\"kelas_aktif\":\"" + String(appliedCls) + "\"";
+  j += ",\"keterangan\":\"" + String(r.reason) + "\"";
+  j += ",\"level_rendah\":" + String((LOW_LEVEL_CUTOFF && r.distOk && r.levelPct < LEVEL_MIN_PCT) ? "true" : "false");
+  j += ",\"mode\":\"" + String(autoMode ? "AUTO" : "MANUAL") + "\"";
+  j += ",\"valve\":[";
+  for (int i = 0; i < 4; i++) {
+    if (i) j += ",";
+    j += "{\"nama\":\"" + String(VALVE_NAME[i]) + "\",\"buka\":" + (valveOpen[i] ? "true" : "false") + "}";
+  }
+  j += "],\"tegangan\":{\"ph\":" + fnum(r.vPh, 3) + ",\"turb\":" + fnum(r.vTurb, 3) +
+       ",\"tds\":" + fnum(r.vTds, 3) + "}";
+  j += ",\"wifi\":\"" + String(staMode ? "STA" : "AP") + "\",\"rssi\":" + String(staMode ? WiFi.RSSI() : 0);
+  j += "}";
+  return j;
+}
+
+String jsonHistory() {
+  String j;
+  j.reserve(histCount * 60 + 100);
+  j = "{\"t\":[";
+  String ph = "", ntu = "", tds = "", tmp = "", lvl = "";
+  int start = (histHead - histCount + HIST_N) % HIST_N;
+  for (int k = 0; k < histCount; k++) {
+    const HistPoint& p = hist[(start + k) % HIST_N];
+    const char* sep = k ? "," : "";
+    j   += sep + String(p.t);
+    ph  += sep + fnum(p.ph, 2);
+    ntu += sep + fnum(p.ntu, 1);
+    tds += sep + fnum(p.tds, 0);
+    tmp += sep + fnum(p.temp, 2);
+    lvl += sep + fnum(p.level, 1);
+  }
+  j += "],\"ph\":[" + ph + "],\"ntu\":[" + ntu + "],\"tds\":[" + tds +
+       "],\"suhu\":[" + tmp + "],\"level\":[" + lvl + "]}";
+  return j;
+}
+
+void postToServer() {
+  if (strlen(POST_URL) == 0 || WiFi.status() != WL_CONNECTED) return;
+  HTTPClient http;
+  http.setTimeout(3000);
+  if (!http.begin(POST_URL)) return;
+  http.addHeader("Content-Type", "application/json");
+  int code = http.POST(jsonData());
+  if (code <= 0) Serial.printf("# POST gagal: %s\n", http.errorToString(code).c_str());
+  http.end();
+}
+
+// --- Komunikasi MQTT ke Backend FastAPI (Cloud Broker) ---
+void publishValveAck(int idx) {
+  if (!mqtt.connected() || idx < 0 || idx >= 4) return;
+  char ack[128];
+  snprintf(ack, sizeof(ack), "{\"valve_id\":\"%s\",\"is_open\":%s}",
+           VALVE_ID_STR[idx], valveOpen[idx] ? "true" : "false");
+  mqtt.publish(TOPIC_VALVE_STAT, ack, false);
+}
+
+void syncAllValvesToMqtt() {
+  for (int i = 0; i < 4; i++) {
+    publishValveAck(i);
+  }
+}
+
+void publishMqttSensor() {
+  if (!mqtt.connected()) return;
+  const Reading& r = cur;
+
+  // Pastikan nilai valid sesuai skema Pydantic ESP32SensorPayload di backend
+  float safePh    = isnan(r.ph)       ? 7.0f          : constrain(r.ph, 0.0f, 14.0f);
+  float safeTurb  = isnan(r.ntu)      ? 0.0f          : max(0.0f, r.ntu);
+  float safeTds   = isnan(r.tds)      ? 0.0f          : max(0.0f, r.tds);
+  float safeTemp  = isnan(r.tempC)    ? constrain(lastGoodTemp, 0.0f, 100.0f) : constrain(r.tempC, 0.0f, 100.0f);
+  float safeLevel = isnan(r.levelPct) ? constrain(lastGoodLevel, 0.0f, 100.0f) : constrain(r.levelPct, 0.0f, 100.0f);
+
+  char payload[256];
+  snprintf(payload, sizeof(payload),
+           "{\"device_id\":\"%s\",\"timestamp\":0,\"ph\":%.2f,\"turbidity\":%.2f,"
+           "\"tds\":%.2f,\"temperature\":%.2f,\"water_level\":%.2f}",
+           DEVICE_ID, safePh, safeTurb, safeTds, safeTemp, safeLevel);
+
+  if (mqtt.publish(TOPIC_SENSORS, payload, false)) {
+    Serial.printf("# [MQTT] Terkirim ke %s: %s\n", TOPIC_SENSORS, payload);
+  } else {
+    Serial.println(F("# [MQTT] Gagal publish data sensor"));
+  }
+}
+
+void onMqttMessage(char* topic, byte* payload, unsigned int length) {
+  String msg;
+  msg.reserve(length + 1);
+  for (unsigned int i = 0; i < length; i++) msg += (char)payload[i];
+
+  if (String(topic) != TOPIC_VALVE_CMD) return;
+  Serial.printf("# [MQTT] Perintah valve diterima: %s\n", msg.c_str());
+
+  // Identifikasi valve_id: bathroom, kitchen, laundry, garden
+  int idx = -1;
+  for (int i = 0; i < 4; i++) {
+    String pattern = String("\"valve_id\":\"") + VALVE_ID_STR[i] + "\"";
+    String patternSp = String("\"valve_id\": \"") + VALVE_ID_STR[i] + "\"";
+    if (msg.indexOf(pattern) >= 0 || msg.indexOf(patternSp) >= 0) {
+      idx = i;
+      break;
+    }
+  }
+  if (idx < 0) return;
+
+  bool isOpen = (msg.indexOf("\"action\":\"open\"") >= 0 || msg.indexOf("\"action\": \"open\"") >= 0);
+  bool isSystemCmd = (msg.indexOf("\"triggered_by\":\"system\"") >= 0 || msg.indexOf("\"triggered_by\": \"system\"") >= 0);
+
+  // Jika perintah berasal dari tombol manual di Web App Dashboard (bukan auto system),
+  // pindahkan ESP32 ke mode MANUAL agar tidak langsung ditimpa oleh loop lokal.
+  if (!isSystemCmd) {
+    if (autoMode) {
+      autoMode = false;
+      for (int i = 0; i < 4; i++) manualReq[i] = valveOpen[i];
+      Serial.println(F("# [MQTT] Override manual dari Web App -> pindah ke mode MANUAL"));
+    }
+    manualReq[idx] = isOpen;
+    applyValves();
+  } else if (autoMode) {
+    setValve(idx, isOpen);
+  }
+
+  // Kirim konfirmasi status terbaru kembali ke backend
+  publishValveAck(idx);
+}
+
+void ensureMqttConnected() {
+  if (!staMode || WiFi.status() != WL_CONNECTED) return;
+  if (mqtt.connected()) return;
+
+  uint32_t now = millis();
+  if (now - lastMqttRetryMs < 5000) return;
+  lastMqttRetryMs = now;
+
+  String clientId = String("esp32_waterq_e08_") + String((uint32_t)ESP.getEfuseMac(), HEX);
+  Serial.printf("# [MQTT] Menyambung ke %s:%d sebagai %s...", MQTT_BROKER, MQTT_PORT, clientId.c_str());
+  if (mqtt.connect(clientId.c_str())) {
+    Serial.println(F(" OK!"));
+    mqtt.subscribe(TOPIC_VALVE_CMD);
+    syncAllValvesToMqtt();
+  } else {
+    Serial.printf(" gagal (rc=%d), coba lagi 5 detik\n", mqtt.state());
+  }
+}
+
+// =====================================================================
+// 9. DASHBOARD WEB
+// =====================================================================
+const char INDEX_HTML[] PROGMEM = R"HTML(<!doctype html>
+<html lang="id"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WaterQ E08</title>
+<style>
+:root{--bg:#f3f6f8;--card:#fff;--ink:#14212b;--mut:#5b6b78;--line:#dfe6ec;--ok:#1f9d55;--warn:#d98e04;--bad:#d64545;--acc:#1769aa}
+@media (prefers-color-scheme:dark){:root{--bg:#0f161c;--card:#18222b;--ink:#e6edf3;--mut:#93a4b3;--line:#283642}}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--ink)}
+header{padding:14px 16px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);background:var(--card)}
+h1{font-size:18px;margin:0}small{color:var(--mut)}
+main{max-width:1050px;margin:0 auto;padding:16px;display:grid;gap:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+.lbl{font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.04em}
+.val{font-size:28px;font-weight:650;margin-top:4px;font-variant-numeric:tabular-nums}
+.unit{font-size:13px;color:var(--mut);font-weight:400;margin-left:3px}
+.cls{display:flex;gap:14px;align-items:center}
+.badge{font-size:34px;font-weight:800;width:62px;height:62px;border-radius:14px;display:grid;place-items:center;color:#fff}
+.A{background:var(--ok)}.B{background:var(--acc)}.C{background:var(--warn)}.D{background:var(--bad)}
+.valves{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.vrow{display:flex;justify-content:space-between;align-items:center;border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.st{font-weight:650}.open{color:var(--ok)}.closed{color:var(--bad)}
+button{font:inherit;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:8px;padding:6px 12px;cursor:pointer}
+button:disabled{opacity:.4;cursor:not-allowed}button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+canvas{width:100%;height:120px;display:block}
+.charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
+.err{color:var(--bad)}
+</style></head><body>
+<header><div><h1>WaterQ E08 — Monitoring Kualitas Air</h1><small id="meta">menunggu data…</small></div>
+<div><button id="bAuto">AUTO</button> <button id="bMan">MANUAL</button></div></header>
+<main>
+<div class="card cls"><div id="badge" class="badge D">–</div>
+<div><div class="lbl">Kelas kualitas air</div><div id="reason" style="font-size:18px;font-weight:600">–</div>
+<small id="extra"></small></div></div>
+<div class="grid">
+<div class="card"><div class="lbl">pH</div><div class="val" id="ph">–</div></div>
+<div class="card"><div class="lbl">Kekeruhan</div><div class="val"><span id="ntu">–</span><span class="unit">NTU</span></div></div>
+<div class="card"><div class="lbl">TDS</div><div class="val"><span id="tds">–</span><span class="unit">ppm</span></div></div>
+<div class="card"><div class="lbl">Suhu</div><div class="val"><span id="suhu">–</span><span class="unit">°C</span></div></div>
+<div class="card"><div class="lbl">Level tangki</div><div class="val"><span id="lvl">–</span><span class="unit">%</span></div><small id="vol"></small></div>
+</div>
+<div class="card"><div class="lbl" style="margin-bottom:8px">Valve (NC)</div><div class="valves" id="valves"></div></div>
+<div class="charts">
+<div class="card"><div class="lbl">pH (15 menit)</div><canvas id="cPh"></canvas></div>
+<div class="card"><div class="lbl">Kekeruhan NTU</div><canvas id="cNtu"></canvas></div>
+<div class="card"><div class="lbl">TDS ppm</div><canvas id="cTds"></canvas></div>
+<div class="card"><div class="lbl">Level %</div><canvas id="cLvl"></canvas></div>
+</div>
+</main>
+<script>
+const $=id=>document.getElementById(id);let last=null;
+const f=(v,d)=>v===null||v===undefined?'–':Number(v).toFixed(d);
+function draw(id,data,color){const c=$(id),r=c.getBoundingClientRect(),dp=devicePixelRatio||1;
+c.width=r.width*dp;c.height=r.height*dp;const g=c.getContext('2d');g.scale(dp,dp);
+const v=data.filter(x=>x!==null);g.clearRect(0,0,r.width,r.height);
+if(v.length<2){g.fillStyle='#889';g.fillText('mengumpulkan data…',8,20);return}
+let mn=Math.min(...v),mx=Math.max(...v);if(mx-mn<1e-6){mx+=1;mn-=1}
+const pad=(mx-mn)*.1;mn-=pad;mx+=pad;const W=r.width,H=r.height-14;
+g.strokeStyle=color;g.lineWidth=2;g.beginPath();let s=false;
+data.forEach((y,i)=>{if(y===null){s=false;return}const X=i/(data.length-1)*W,Y=H-(y-mn)/(mx-mn)*H+2;
+s?g.lineTo(X,Y):g.moveTo(X,Y);s=true});g.stroke();
+g.fillStyle='#889';g.font='11px system-ui';g.fillText(mx.toFixed(1),2,11);g.fillText(mn.toFixed(1),2,H+10)}
+async function load(){try{
+const d=await (await fetch('/api/data')).json();last=d;
+$('meta').textContent=d.waktu+' · sampel #'+d.sampel+' · tiap '+d.interval_s+' s · WiFi '+d.wifi;
+$('badge').className='badge '+d.kelas_aktif;$('badge').textContent=d.kelas_aktif;
+$('reason').textContent=d.keterangan;
+$('extra').textContent='Kelas terukur: '+d.kelas+(d.kelas!==d.kelas_aktif?' (menunggu konfirmasi)':'')+(d.level_rendah?' · LEVEL RENDAH: semua valve ditutup':'');
+$('ph').textContent=f(d.ph,2);$('ntu').textContent=f(d.kekeruhan_ntu,1);$('tds').textContent=f(d.tds_ppm,0);
+$('suhu').textContent=d.suhu_c===null?'error':f(d.suhu_c,1);$('lvl').textContent=d.level_pct===null?'error':f(d.level_pct,0);
+$('vol').textContent=d.volume_l===null?'sensor jarak tidak terbaca':'± '+f(d.volume_l,0)+' L · jarak '+f(d.jarak_cm,1)+' cm';
+$('bAuto').className=d.mode==='AUTO'?'on':'';$('bMan').className=d.mode==='MANUAL'?'on':'';
+$('valves').innerHTML=d.valve.map((v,i)=>`<div class="vrow"><div>${v.nama}<br><span class="st ${v.buka?'open':'closed'}">${v.buka?'TERBUKA':'TERTUTUP'}</span></div>
+<button ${d.mode==='AUTO'?'disabled':''} onclick="tog(${i+1},${v.buka?0:1})">${v.buka?'Tutup':'Buka'}</button></div>`).join('');
+const h=await (await fetch('/api/history')).json();
+draw('cPh',h.ph,'#1769aa');draw('cNtu',h.ntu,'#d98e04');draw('cTds',h.tds,'#7b4bd6');draw('cLvl',h.level,'#1f9d55');
+}catch(e){$('meta').innerHTML='<span class="err">koneksi ke ESP32 terputus…</span>'}}
+async function tog(ch,st){await fetch('/api/valve?ch='+ch+'&state='+st,{method:'POST'});load()}
+$('bAuto').onclick=async()=>{await fetch('/api/mode?auto=1',{method:'POST'});load()};
+$('bMan').onclick=async()=>{await fetch('/api/mode?auto=0',{method:'POST'});load()};
+load();setInterval(load,10000);
+</script></body></html>)HTML";
+
+void sendJson(int code, const String& body) {
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.sendHeader("Cache-Control", "no-store");
+  server.send(code, "application/json", body);
+}
+
+void setupWeb() {
+  server.on("/", HTTP_GET, []() { server.send(200, "text/html", INDEX_HTML); });
+  server.on("/api/data", HTTP_GET, []() { sendJson(200, jsonData()); });
+  server.on("/api/history", HTTP_GET, []() { sendJson(200, jsonHistory()); });
+
+  // POST /api/mode?auto=1  (AUTO) atau auto=0 (MANUAL)
+  server.on("/api/mode", HTTP_POST, []() {
+    if (!server.hasArg("auto")) { sendJson(400, "{\"error\":\"butuh parameter auto\"}"); return; }
+    autoMode = server.arg("auto") == "1";
+    if (!autoMode) for (int i = 0; i < 4; i++) manualReq[i] = valveOpen[i]; // mulai dari kondisi sekarang
+    applyValves();
+    sendJson(200, jsonData());
+  });
+
+  // POST /api/valve?ch=1..4&state=0/1  (hanya di mode MANUAL)
+  server.on("/api/valve", HTTP_POST, []() {
+    if (autoMode) { sendJson(409, "{\"error\":\"pindah ke mode MANUAL dulu\"}"); return; }
+    int ch = server.arg("ch").toInt();
+    if (ch < 1 || ch > 4 || !server.hasArg("state")) { sendJson(400, "{\"error\":\"ch 1-4, state 0/1\"}"); return; }
+    manualReq[ch - 1] = server.arg("state") == "1";
+    applyValves();
+    sendJson(200, jsonData());
+  });
+
+  server.onNotFound([]() { server.send(404, "text/plain", "404"); });
+  server.begin();
+}
+
+// =====================================================================
+// 10. WIFI & MQTT SETUP
+// =====================================================================
+void setupWiFi() {
+  WiFi.setHostname(HOSTNAME);           // harus sebelum WiFi.mode()/begin()
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  Serial.printf("# Menyambung ke WiFi \"%s\"", WIFI_SSID);
+  uint32_t t0 = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - t0 < 15000) {
+    delay(500); Serial.print('.');
+  }
+  Serial.println();
+  if (WiFi.status() == WL_CONNECTED) {
+    staMode = true;
+    WiFi.setAutoReconnect(true);
+    configTime(GMT_OFFSET_SEC, 0, "pool.ntp.org", "time.google.com");
+    Serial.printf("# WiFi OK, IP: %s  ->  http://%s.local\n",
+                  WiFi.localIP().toString().c_str(), HOSTNAME);
+  } else {
+    staMode = false;
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_AP);
+    WiFi.softAP(AP_SSID, AP_PASS);
+    Serial.printf("# WiFi gagal -> hotspot \"%s\" (pass %s), buka http://%s\n",
+                  AP_SSID, AP_PASS, WiFi.softAPIP().toString().c_str());
+  }
+  if (MDNS.begin(HOSTNAME)) MDNS.addService("http", "tcp", 80);
+
+  // Setup Cloud MQTT Broker
+  mqtt.setServer(MQTT_BROKER, MQTT_PORT);
+  mqtt.setCallback(onMqttMessage);
+  mqtt.setBufferSize(512);
+}
+
+// =====================================================================
+// 11. KALIBRASI (NVS) & PERINTAH SERIAL
+// =====================================================================
+void loadCal() {
+  prefs.begin("waterq", true);
+  cal.ph7V       = prefs.getFloat("ph7V", 2.50f);
+  cal.ph4V       = prefs.getFloat("ph4V", 3.05f);
+  cal.turbClearV = prefs.getFloat("turbV", 4.20f);
+  cal.tdsK       = prefs.getFloat("tdsK", 1.00f);
+  prefs.end();
+}
+
+void saveCal() {
+  prefs.begin("waterq", false);
+  prefs.putFloat("ph7V", cal.ph7V);
+  prefs.putFloat("ph4V", cal.ph4V);
+  prefs.putFloat("turbV", cal.turbClearV);
+  prefs.putFloat("tdsK", cal.tdsK);
+  prefs.end();
+}
+
+void showCal() {
+  Serial.printf("# Kalibrasi: pH7=%.3f V  pH4=%.3f V  (slope %.4f V/pH)  turbJernih=%.3f V  tdsK=%.3f\n",
+                cal.ph7V, cal.ph4V, (cal.ph4V - cal.ph7V) / -3.0f, cal.turbClearV, cal.tdsK);
+}
+
+// Rata-rata 10 x readAdcVolt (±1 detik) untuk kalibrasi yang stabil
+float avgVolt(int pin, float div) {
+  float s = 0;
+  for (int i = 0; i < 10; i++) s += readAdcVolt(pin);
+  return s / 10.0f / div;
+}
+
+void printHelp() {
+  Serial.println(F(
+    "# ---- Perintah (ketik di Serial Monitor, akhiri Enter) ----\n"
+    "# help              daftar perintah\n"
+    "# show              tampilkan kalibrasi\n"
+    "# raw               tegangan sensor saat ini\n"
+    "# cal7              probe pH di buffer pH 7,00 (tunggu 1-2 menit stabil)\n"
+    "# cal4              probe pH di buffer pH 4,00\n"
+    "# calturb           sensor kekeruhan di air jernih (0 NTU)\n"
+    "# caltds <ppm>      sensor TDS di larutan standar, mis. caltds 707\n"
+    "# reset             kembalikan kalibrasi default\n"
+    "# auto | manual     mode valve\n"
+    "# valve <1-4> <0/1> buka(1)/tutup(0) valve (mode manual)\n"
+    "# now               ambil sampel sekarang\n"
+    "# header            cetak ulang header CSV"));
+}
+
+void handleCommand(String cmd) {
+  cmd.trim();
+  String lc = cmd; lc.toLowerCase();
+  if (lc.length() == 0) return;
+
+  if (lc == "help") printHelp();
+  else if (lc == "show") showCal();
+  else if (lc == "raw") {
+    Serial.printf("# Vph=%.3f V  Vturb=%.3f V  Vtds=%.3f V\n",
+                  readAdcVolt(PIN_PH) / DIV_RATIO, readAdcVolt(PIN_TURB) / DIV_RATIO, readAdcVolt(PIN_TDS));
+  }
+  else if (lc == "cal7") { cal.ph7V = avgVolt(PIN_PH, DIV_RATIO); saveCal(); showCal(); }
+  else if (lc == "cal4") { cal.ph4V = avgVolt(PIN_PH, DIV_RATIO); saveCal(); showCal(); }
+  else if (lc == "calturb") { cal.turbClearV = avgVolt(PIN_TURB, DIV_RATIO); saveCal(); showCal(); }
+  else if (lc.startsWith("caltds")) {
+    float ref = lc.substring(6).toFloat();
+    if (ref <= 0) { Serial.println("# format: caltds 707"); return; }
+    float v = avgVolt(PIN_TDS, 1.0f);
+    float oldK = cal.tdsK; cal.tdsK = 1.0f;
+    float raw = tdsFromVolt(v, lastGoodTemp);
+    if (raw < 1.0f) { cal.tdsK = oldK; Serial.println("# TDS terlalu kecil, cek probe"); return; }
+    cal.tdsK = ref / raw; saveCal(); showCal();
+  }
+  else if (lc == "reset") {
+    cal = {2.50f, 3.05f, 4.20f, 1.00f}; saveCal(); showCal();
+  }
+  else if (lc == "auto")   { autoMode = true;  applyValves(); Serial.println("# mode AUTO"); }
+  else if (lc == "manual") {
+    autoMode = false; for (int i = 0; i < 4; i++) manualReq[i] = valveOpen[i];
+    applyValves(); Serial.println("# mode MANUAL");
+  }
+  else if (lc.startsWith("valve")) {
+    int ch = -1, st = -1;
+    sscanf(lc.c_str(), "valve %d %d", &ch, &st);
+    if (autoMode) Serial.println("# ketik 'manual' dulu");
+    else if (ch < 1 || ch > 4 || (st != 0 && st != 1)) Serial.println("# format: valve 1 1");
+    else { manualReq[ch - 1] = st; applyValves(); Serial.printf("# %s %s\n", VALVE_NAME[ch - 1], st ? "BUKA" : "TUTUP"); }
+  }
+  else if (lc == "now") { takeSample(); printCsvRow(); publishMqttSensor(); }
+  else if (lc == "header") printCsvHeader();
+  else Serial.println("# perintah tidak dikenal, ketik help");
+}
+
+void pollSerial() {
+  while (Serial.available()) {
+    char c = Serial.read();
+    if (c == '\n' || c == '\r') { if (serialLine.length()) { handleCommand(serialLine); serialLine = ""; } }
+    else if (serialLine.length() < 64) serialLine += c;
+  }
+}
+
+// =====================================================================
+// 12. SETUP & LOOP
+// =====================================================================
+void setup() {
+  initRelays();                         // PALING AWAL: semua valve tertutup
+  Serial.begin(115200);
+  delay(200);
+  Serial.println(F("\n# ===== WaterQ E08 — ESP32 38 pin (Cloud MQTT) ====="));
+
+  pinMode(PIN_TRIG, OUTPUT);
+  digitalWrite(PIN_TRIG, LOW);
+  pinMode(PIN_ECHO, INPUT);
+  analogReadResolution(12);             // atenuasi default 11 dB (0–3,1 V)
+
+  loadCal();
+  showCal();
+
+  ds18.begin();
+  ds18.setResolution(12);
+  ds18.setWaitForConversion(false);     // non-blocking
+  ds18.requestTemperatures();
+  Serial.printf("# DS18B20 terdeteksi: %d\n", ds18.getDeviceCount());
+
+  setupWiFi();
+  setupWeb();
+  ensureMqttConnected();
+  printHelp();
+
+  delay(800);                           // tunggu konversi suhu pertama (750 ms)
+  printCsvHeader();
+  takeSample();
+  printCsvRow();
+  publishMqttSensor();
+  postToServer();
+  lastSampleMs = millis();
+}
+
+void loop() {
+  server.handleClient();
+  pollSerial();
+
+  if (staMode && WiFi.status() == WL_CONNECTED) {
+    if (!mqtt.connected()) ensureMqttConnected();
+    mqtt.loop();
+  }
+
+  uint32_t now = millis();
+  if (now - lastSampleMs >= SAMPLE_INTERVAL_MS) {
+    lastSampleMs += SAMPLE_INTERVAL_MS;
+    if (now - lastSampleMs >= SAMPLE_INTERVAL_MS) lastSampleMs = now;  // kalau sempat tertinggal jauh
+    takeSample();
+    printCsvRow();
+    publishMqttSensor();
+    postToServer();
+  }
+
+  // Coba sambung ulang WiFi tiap 30 s kalau putus (mode STA)
+  static uint32_t lastWifiCheck = 0;
+  if (staMode && now - lastWifiCheck > 30000) {
+    lastWifiCheck = now;
+    if (WiFi.status() != WL_CONNECTED) WiFi.reconnect();
+  }
+}

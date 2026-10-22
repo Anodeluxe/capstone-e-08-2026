@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { AlertTriangle, Clock, X } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn, isStatisticalModel } from '@/lib/utils'
 import { useWSStore } from '@/hooks/useSensorWebSocket'
 import { useLatestPredictions } from '@/hooks/useSensorData'
 import type { AlertData } from '@/types'
@@ -53,7 +53,7 @@ export default function AlertBanner() {
                   ? `${urgentPrediction.days_until_threshold.toFixed(1)} Hari Tersisa`
                   : 'Mendekati Ambang'}
               </span>
-              {urgentPrediction.confidence && (
+              {!isStatisticalModel(urgentPrediction.model_used) && urgentPrediction.confidence && (
                 <span className="text-xs text-amber-800/80 dark:text-amber-300/80">
                   (Keyakinan Model: {(urgentPrediction.confidence * 100).toFixed(0)}%)
                 </span>
