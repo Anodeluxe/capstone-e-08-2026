@@ -34,8 +34,8 @@ if [ "$TARGET" == "test" ]; then
     update_env_file ".env" "toren_ml_test"
     update_env_file "backend/.env" "toren_ml_test"
 
-    echo "Restarting backend container..."
-    POSTGRES_DB=toren_ml_test docker compose --profile app up -d backend
+    echo "Restarting backend container pointing to 'toren_ml_test'..."
+    POSTGRES_DB=toren_ml_test docker compose --profile app up -d --no-deps backend
     
     echo "Waiting for backend to be healthy..."
     sleep 3
@@ -56,8 +56,8 @@ elif [ "$TARGET" == "prod" ]; then
     update_env_file ".env" "toren_db"
     update_env_file "backend/.env" "toren_db"
 
-    echo "Restarting backend container..."
-    POSTGRES_DB=toren_db docker compose --profile app up -d backend
+    echo "Restarting backend container pointing to 'toren_db'..."
+    POSTGRES_DB=toren_db docker compose --profile app up -d --no-deps backend
     
     echo "Waiting for backend to be healthy..."
     sleep 3
