@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useSensorHistory, useSensorAnomalies } from '@/hooks/useSensorData'
+import { useWSStore } from '@/hooks/useSensorWebSocket'
 import SensorChart from '@/components/sensors/SensorChart'
 import SensorTable from '@/components/sensors/SensorTable'
 import type { SensorReading } from '@/types'
@@ -30,6 +31,19 @@ export default function SensorsPage() {
   const [hours, setHours] = useState<number>(24)
   const { data: history, isLoading } = useSensorHistory(hours)
   const { data: anomalies } = useSensorAnomalies(72)
+  const { latestReading } = useWSStore()
+
+  // History dari API urut lama → baru (ascending). Tabel "Pembacaan Terbaru"
+  // harus menampilkan 50 data TERAKHIR dengan yang terbaru di atas, dan
+  // menyertakan reading live dari WebSocket agar update terasa realtime.
+  const latestRows = useMemo(() => {
+    const rows: SensorReading[] = history ?? []
+    const merged =
+      latestReading && !rows.some((r) => r.id === latestReading.id)
+        ? [...rows, latestReading]
+        : rows
+    return merged.slice(-50).reverse()
+  }, [history, latestReading])
 
   return (
     <div className="flex flex-col gap-6">
@@ -74,7 +88,7 @@ export default function SensorsPage() {
         <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-widest mb-3">
           Pembacaan Terbaru ({hours} jam terakhir)
         </h2>
-        <SensorTable data={(history ?? []).slice(0, 50)} />
+        <SensorTable data={latestRows} />
       </section>
 
       {(anomalies?.length ?? 0) > 0 && (
