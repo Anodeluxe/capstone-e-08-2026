@@ -115,6 +115,8 @@ setting tambahan.
 # 1. DNS → tunnel (sudah dilakukan, cukup sekali)
 cloudflared tunnel route dns e952bc2e-7d1e-4740-9073-7f65713e68df aminu.irsad.site
 
+# Atau semua langkah di bawah sekaligus: sudo ./deploy/setup-cloudflare.sh
+
 # 2. Tambah ingress SEBELUM baris `- service: http_status:404`
 sudo nano /etc/cloudflared/config.yml
 #   - hostname: aminu.irsad.site
