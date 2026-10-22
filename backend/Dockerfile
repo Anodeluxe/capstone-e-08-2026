@@ -49,6 +49,9 @@ COPY --chown=appuser:appuser app ./app
 COPY --chown=appuser:appuser alembic ./alembic
 COPY --chown=appuser:appuser alembic.ini ./alembic.ini
 
+# Helper & test scripts
+COPY --chown=appuser:appuser scripts ./scripts
+
 USER appuser
 
 EXPOSE 8000
