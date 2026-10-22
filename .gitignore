@@ -34,3 +34,7 @@ todo.md
 # env
 /.env*
 !/.env.example
+
+# Runtime state broker (jangan di-track)
+mosquitto/data/*.db
+mosquitto/log/*
