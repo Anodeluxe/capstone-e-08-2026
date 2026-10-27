@@ -85,6 +85,35 @@ class SensorReadingOut(BaseModel):
         return serialize_utc(v)
 
 
+class HourlySensorReadingOut(BaseModel):
+    """
+    One hourly bucket: each field is the average of every sample whose
+    timestamp falls inside that hour. `timestamp` is the start of the bucket
+    (e.g. 10:00:00), and `sample_count` tells how many raw readings fed it.
+    """
+
+    timestamp: datetime
+    ph: float
+    turbidity: float
+    tds: float
+    temperature: float
+    water_level: float
+    score_overall: float | None
+    score_bathroom: float | None
+    score_kitchen: float | None
+    score_laundry: float | None
+    score_garden: float | None
+    is_sudden_change: bool
+    anomaly_parameter: str | None
+    sample_count: int
+
+    @field_serializer("timestamp")
+    def serialize_timestamp(self, v: datetime) -> datetime:
+        # Naive DB values are UTC by convention → mark with +00:00 so the
+        # frontend renders the correct local (WIB) time.
+        return serialize_utc(v)
+
+
 class SensorHistoryParams(BaseModel):
     """Query params for /sensors/history endpoint."""
 

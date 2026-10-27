@@ -1,6 +1,7 @@
 import axios from 'axios'
 import type {
   SensorReading,
+  HourlySensorReading,
   ValveState,
   ValveOverrideLog,
   PredictionResult,
@@ -35,6 +36,11 @@ export const sensorsApi = {
   history: (hours = 24) =>
     api
       .get<SensorReading[]>('/sensors/history', { params: { hours } })
+      .then((r) => r.data),
+
+  hourly: (hours = 168) =>
+    api
+      .get<HourlySensorReading[]>('/sensors/hourly', { params: { hours } })
       .then((r) => r.data),
 
   anomalies: (hours = 72) =>

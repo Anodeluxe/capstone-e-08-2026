@@ -4,12 +4,12 @@ from io import StringIO
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 import csv
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.models.sensor_reading import SensorReading
-from app.schemas.sensor import SensorReadingOut
+from app.schemas.sensor import HourlySensorReadingOut, SensorReadingOut
 
 router = APIRouter(prefix="/sensors", tags=["Sensors"])
 
@@ -78,6 +78,65 @@ async def get_sensor_history(
         .order_by(SensorReading.timestamp.asc())
     )
     return list(result.scalars().all())
+
+
+@router.get("/hourly", response_model=list[HourlySensorReadingOut])
+async def get_hourly_averages(
+    hours: int = Query(default=168, ge=1, le=720),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Return one row per hour for the last `hours` hours. Every numeric field is
+    the average of all samples inside that hour; `timestamp` is the bucket
+    start (e.g. 10:00:00). Hours without any reading are omitted.
+    """
+    since = datetime.utcnow() - timedelta(hours=hours)
+    bucket = func.date_trunc("hour", SensorReading.timestamp).label("hour")
+
+    result = await db.execute(
+        select(
+            bucket,
+            func.avg(SensorReading.ph).label("ph"),
+            func.avg(SensorReading.turbidity).label("turbidity"),
+            func.avg(SensorReading.tds).label("tds"),
+            func.avg(SensorReading.temperature).label("temperature"),
+            func.avg(SensorReading.water_level).label("water_level"),
+            func.avg(SensorReading.score_overall).label("score_overall"),
+            func.avg(SensorReading.score_bathroom).label("score_bathroom"),
+            func.avg(SensorReading.score_kitchen).label("score_kitchen"),
+            func.avg(SensorReading.score_laundry).label("score_laundry"),
+            func.avg(SensorReading.score_garden).label("score_garden"),
+            func.bool_or(SensorReading.is_sudden_change).label("is_sudden_change"),
+            func.min(SensorReading.anomaly_parameter).label("anomaly_parameter"),
+            func.count(SensorReading.id).label("sample_count"),
+        )
+        .where(SensorReading.timestamp >= since)
+        .group_by(bucket)
+        .order_by(bucket)
+    )
+
+    def _round(value: float | None, digits: int = 2) -> float | None:
+        return round(value, digits) if value is not None else None
+
+    return [
+        HourlySensorReadingOut(
+            timestamp=row.hour,
+            ph=round(row.ph, 2),
+            turbidity=round(row.turbidity, 2),
+            tds=round(row.tds, 2),
+            temperature=round(row.temperature, 2),
+            water_level=round(row.water_level, 2),
+            score_overall=_round(row.score_overall),
+            score_bathroom=_round(row.score_bathroom),
+            score_kitchen=_round(row.score_kitchen),
+            score_laundry=_round(row.score_laundry),
+            score_garden=_round(row.score_garden),
+            is_sudden_change=bool(row.is_sudden_change),
+            anomaly_parameter=row.anomaly_parameter,
+            sample_count=row.sample_count,
+        )
+        for row in result.all()
+    ]
 
 
 @router.get("/anomalies", response_model=list[SensorReadingOut])

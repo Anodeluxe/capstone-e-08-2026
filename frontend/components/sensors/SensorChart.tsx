@@ -12,7 +12,7 @@ import {
 import { format } from 'date-fns'
 import { id as idLocale } from 'date-fns/locale'
 import { toUtcDate } from '@/lib/utils'
-import type { SensorReading } from '@/types'
+import type { HourlySensorReading, SensorReading } from '@/types'
 
 type SensorNumericKey = keyof Pick<
   SensorReading,
@@ -20,11 +20,12 @@ type SensorNumericKey = keyof Pick<
 >
 
 interface Props {
-  data: SensorReading[]
+  data: Array<SensorReading | HourlySensorReading>
   dataKey: SensorNumericKey
   label: string
   color?: string
   unit?: string
+  connectNulls?: boolean
 }
 
 export default function SensorChart({
@@ -33,6 +34,7 @@ export default function SensorChart({
   label,
   color = '#0891b2',
   unit = '',
+  connectNulls = true,
 }: Props) {
   return (
     <div
@@ -81,7 +83,7 @@ export default function SensorChart({
             stroke={color}
             dot={false}
             strokeWidth={2}
-            connectNulls
+            connectNulls={connectNulls}
           />
         </LineChart>
       </ResponsiveContainer>

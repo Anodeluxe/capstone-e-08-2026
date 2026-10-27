@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { sensorsApi, dashboardApi, predictionsApi, valvesApi } from '@/lib/api'
 import {
   mockSensorReadings,
+  mockHourlyReadings,
   mockLatestReading,
   mockDashboardSummary,
   mockValveStates,
@@ -24,13 +25,23 @@ export function useLatestSensor() {
   })
 }
 
-export function useSensorHistory(hours = 24) {
+export function useSensorHistory(hours = 24, enabled = true) {
   return useQuery({
     queryKey: ['sensors', 'history', hours],
     queryFn: () => sensorsApi.history(hours),
     refetchInterval: IS_DEMO ? false : 60_000,
-    enabled: !IS_DEMO,
+    enabled: !IS_DEMO && enabled,
     initialData: IS_DEMO ? mockSensorReadings : undefined,
+  })
+}
+
+export function useSensorHourly(hours = 168, enabled = true) {
+  return useQuery({
+    queryKey: ['sensors', 'hourly', hours],
+    queryFn: () => sensorsApi.hourly(hours),
+    refetchInterval: IS_DEMO ? false : 60_000,
+    enabled: !IS_DEMO && enabled,
+    initialData: IS_DEMO ? mockHourlyReadings : undefined,
   })
 }
 

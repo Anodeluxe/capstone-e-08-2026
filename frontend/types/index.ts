@@ -15,6 +15,23 @@ export interface SensorReading {
   anomaly_parameter: string | null
 }
 
+export interface HourlySensorReading {
+  timestamp: string
+  ph: number
+  turbidity: number
+  tds: number
+  temperature: number
+  water_level: number
+  score_overall: number | null
+  score_bathroom: number | null
+  score_kitchen: number | null
+  score_laundry: number | null
+  score_garden: number | null
+  is_sudden_change: boolean
+  anomaly_parameter: string | null
+  sample_count: number
+}
+
 export type ValveID = 'bathroom' | 'kitchen' | 'laundry' | 'garden'
 
 export interface ValveState {

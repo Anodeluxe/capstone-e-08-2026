@@ -1,5 +1,6 @@
 import type {
   SensorReading,
+  HourlySensorReading,
   ValveState,
   ValveOverrideLog,
   PredictionResult,
@@ -97,6 +98,44 @@ export const mockSensorReadings: SensorReading[] = RAW.map((r, i) => ({
 
 // Most recent reading (minutes = 0)
 export const mockLatestReading = mockSensorReadings[0]
+
+// Hourly averages for the demo "7 hari (rata-rata per jam)" view. The mock
+// dataset only spans 24h, so this yields 25 buckets with 2 samples each.
+export const mockHourlyReadings: HourlySensorReading[] = (() => {
+  const buckets = new Map<string, SensorReading[]>()
+
+  for (const reading of mockSensorReadings) {
+    const hour = new Date(reading.timestamp)
+    hour.setUTCMinutes(0, 0, 0)
+    const key = hour.toISOString()
+    buckets.set(key, [...(buckets.get(key) ?? []), reading])
+  }
+
+  const avg = (values: Array<number | null>): number | null => {
+    const nums = values.filter((v): v is number => v !== null)
+    if (nums.length === 0) return null
+    return nums.reduce((sum, v) => sum + v, 0) / nums.length
+  }
+
+  return [...buckets.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([timestamp, rows]) => ({
+      timestamp,
+      ph: avg(rows.map((r) => r.ph)) ?? 0,
+      turbidity: avg(rows.map((r) => r.turbidity)) ?? 0,
+      tds: avg(rows.map((r) => r.tds)) ?? 0,
+      temperature: avg(rows.map((r) => r.temperature)) ?? 0,
+      water_level: avg(rows.map((r) => r.water_level)) ?? 0,
+      score_overall: avg(rows.map((r) => r.score_overall)),
+      score_bathroom: avg(rows.map((r) => r.score_bathroom)),
+      score_kitchen: avg(rows.map((r) => r.score_kitchen)),
+      score_laundry: avg(rows.map((r) => r.score_laundry)),
+      score_garden: avg(rows.map((r) => r.score_garden)),
+      is_sudden_change: rows.some((r) => r.is_sudden_change),
+      anomaly_parameter: rows.find((r) => r.anomaly_parameter)?.anomaly_parameter ?? null,
+      sample_count: rows.length,
+    }))
+})()
 
 export const mockValveStates: ValveState[] = [
   {

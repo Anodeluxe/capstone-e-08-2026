@@ -3,10 +3,11 @@
 import { format } from 'date-fns'
 import { id as idLocale } from 'date-fns/locale'
 import { cn, toUtcDate } from '@/lib/utils'
-import type { SensorReading } from '@/types'
+import type { HourlySensorReading, SensorReading } from '@/types'
 
 interface Props {
-  data: SensorReading[]
+  data: Array<SensorReading | HourlySensorReading>
+  showSampleCount?: boolean
 }
 
 function scoreClass(score: number | null): string {
@@ -16,7 +17,7 @@ function scoreClass(score: number | null): string {
   return 'text-rose-600 dark:text-rose-400 font-medium'
 }
 
-export default function SensorTable({ data }: Props) {
+export default function SensorTable({ data, showSampleCount = false }: Props) {
   if (data.length === 0) {
     return (
       <p className="text-sm text-muted-foreground py-4">Tidak ada data tersedia.</p>
@@ -38,6 +39,7 @@ export default function SensorTable({ data }: Props) {
               <th className="px-4 py-3 font-medium">TDS</th>
               <th className="px-4 py-3 font-medium">Suhu</th>
               <th className="px-4 py-3 font-medium">Level Air</th>
+              {showSampleCount && <th className="px-4 py-3 font-medium">Sampel</th>}
               <th className="px-4 py-3 font-medium">Skor</th>
               <th className="px-4 py-3 font-medium">Status</th>
             </tr>
@@ -45,7 +47,7 @@ export default function SensorTable({ data }: Props) {
           <tbody>
             {data.map((row) => (
               <tr
-                key={row.id}
+                key={'id' in row ? row.id : row.timestamp}
                 className={cn(
                   'border-b border-border/60 last:border-0 transition-colors',
                   row.is_sudden_change
@@ -64,6 +66,11 @@ export default function SensorTable({ data }: Props) {
                 <td className="px-4 py-2 font-mono tabular-nums">{row.tds.toFixed(0)} ppm</td>
                 <td className="px-4 py-2 font-mono tabular-nums">{row.temperature.toFixed(1)} °C</td>
                 <td className="px-4 py-2 font-mono tabular-nums">{row.water_level.toFixed(1)}%</td>
+                {showSampleCount && (
+                  <td className="px-4 py-2 font-mono tabular-nums text-muted-foreground">
+                    {'sample_count' in row ? row.sample_count : '—'}
+                  </td>
+                )}
                 <td className={cn('px-4 py-2 font-mono tabular-nums', scoreClass(row.score_overall))}>
                   {row.score_overall !== null ? row.score_overall.toFixed(1) : '—'}
                 </td>

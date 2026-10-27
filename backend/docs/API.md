@@ -168,6 +168,7 @@ API ini bukan API baca-saja. Ringkasan efek samping:
 |---|---|---|---|
 | GET | `/api/v1/sensors/latest` | – | Reading terakhir |
 | GET | `/api/v1/sensors/history` | – | Deret reading dalam N jam |
+| GET | `/api/v1/sensors/hourly` | – | Rata-rata per jam (default 168 jam / 7 hari) |
 | GET | `/api/v1/sensors/anomalies` | – | Reading yang ditandai sudden change |
 | GET | `/api/v1/sensors/export` | – | Unduh CSV untuk analisis ML offline |
 
@@ -304,6 +305,32 @@ Respons: `SensorReadingOut[]`, urut **timestamp ASC**.
 ```bash
 curl "http://localhost:8005/api/v1/sensors/history?hours=6"
 ```
+
+#### `GET /api/v1/sensors/hourly`
+
+| Query | Tipe | Default | Rentang | Keterangan |
+|---|---|---|---|---|
+| `hours` | int | `168` (7 hari) | 1–720 | Jendela lookback |
+
+Respons: `HourlySensorReadingOut[]`, urut **timestamp ASC**. Tiap baris = satu jam
+(`date_trunc('hour', timestamp)`), dan semua field numerik adalah rata-rata seluruh
+sampel dalam jam tersebut. `sample_count` = jumlah sampel mentah di jam itu.
+`is_sudden_change` bernilai `true` bila ada minimal satu sampel anomali di jam tersebut.
+
+```json
+{
+  "timestamp": "2026-10-23T14:00:00Z",
+  "ph": 7.31, "turbidity": 1690.42, "tds": 714.8,
+  "temperature": 28.2, "water_level": 80.0,
+  "score_overall": 54.1, "score_bathroom": null,
+  "score_kitchen": null, "score_laundry": null, "score_garden": null,
+  "is_sudden_change": false, "anomaly_parameter": null,
+  "sample_count": 360
+}
+```
+
+Catatan: jam tanpa data tidak dibuatkan baris kosong. Bucket memakai jam UTC;
+karena WIB = UTC+7 (offset bulat), batas jam tetap jatuh tepat di `HH:00:00` WIB.
 
 #### `GET /api/v1/sensors/anomalies`
 
