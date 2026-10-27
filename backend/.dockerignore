@@ -22,5 +22,4 @@ app/ml/*.ipynb
 
 # ── Tidak dipakai saat runtime ───────────────────────────────────────────────
 tests/
-scripts/
 *.log
