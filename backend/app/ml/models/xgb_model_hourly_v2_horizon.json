@@ -26,5 +26,25 @@
   "target_cap_hours": 720,
   "score_threshold": 60.0,
   "training_dataset": "data_toren_hourly_v2.csv",
-  "feature_version": "v2_horizon_30d"
+  "feature_version": "v2_horizon_30d",
+  "metrics": {
+    "r2": 0.8761323094367981,
+    "mae_hours": 47.73051834106445,
+    "mae_days": 1.9887715975443523,
+    "rmse_hours": 73.25262451171875,
+    "r2_all": 0.9456034302711487,
+    "mae_days_all": 1.0329287846883137,
+    "r2_ews": 0.21328848600387573,
+    "mae_days_ews": 1.4859259923299153,
+    "n_test_rows": 377452,
+    "n_test_actionable": 144200,
+    "n_test_ews": 48200,
+    "n_train_cycles": 800,
+    "n_test_cycles": 200,
+    "split": "GroupShuffleSplit 80/20 by Cycle_ID",
+    "random_state": 42,
+    "confidence_definition": "Holdout R2 on cycles with uncapped true RUL: r2_ews for RUL <= 240h, r2_actionable for RUL <= 720h",
+    "xgboost_version": "3.3.0",
+    "trained_at": "2026-10-27T07:00:27.562432+00:00"
+  }
 }

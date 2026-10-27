@@ -129,12 +129,29 @@ async def predict_rul_ml(
     rul_hours = max(0.0, min(rul_raw, label_cap))
     metrics = metadata.get("metrics", {})
 
+    # Pilih metrik sesuai horizon prediksi: R2 pada subset EWS (<=10 hari)
+    # jauh lebih relevan untuk prediksi mendesak daripada R2 30 hari.
+    settings = get_settings()
+    if (
+        rul_hours <= settings.early_warning_hours
+        and metrics.get("r2_ews") is not None
+    ):
+        confidence = metrics["r2_ews"]
+        confidence_metric = "r2_ews"
+    elif metrics.get("r2_actionable") is not None:
+        confidence = metrics["r2_actionable"]
+        confidence_metric = "r2_actionable"
+    else:
+        confidence = metrics.get("r2")
+        confidence_metric = "r2"
+
     return {
         "rul_hours": rul_hours,
         "rul_days": round(rul_hours / 24.0, 2),
         "predicted_date": datetime.utcnow() + timedelta(hours=rul_hours),
         "model_used": "xgb_v2_horizon_30d",
-        "confidence": metrics.get("r2"),
+        "confidence": confidence,
+        "confidence_metric": confidence_metric,
         "within_30d_window": 0.0 <= rul_raw <= label_cap,
         "raw_rul_hours": rul_raw,
         "days_until_threshold": round(rul_hours / 24.0, 2),
