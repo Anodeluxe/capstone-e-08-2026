@@ -79,15 +79,20 @@ Tinted toward bg hue (220°). No pure-black drops:
 ## Layout
 
 - Container: `max-w-7xl mx-auto px-4`
+- Mobile: bottom tab bar (fixed, `md:hidden`), `pb-24` spacer on `<main>`; safe-area inset via `env(safe-area-inset-bottom)` + `viewportFit: cover`
 - Page header pattern: `h1 text-xl font-semibold tracking-tight` + `p text-sm text-muted-foreground`
 - Section labels: `text-xs font-medium text-muted-foreground uppercase tracking-widest mb-3`
 - Tables: `bg-card`, header `bg-muted/50`, rows `hover:bg-muted/40`, borders `border-border/60`
+- Tables on mobile: hide secondary columns progressively (`hidden sm:table-cell` / `hidden md:table-cell` / `hidden lg:table-cell`), keep Waktu + Skor/Status + key column visible; cell padding `px-3 py-2` mobile, `px-4` up
 - Cards: `rounded-xl border border-border bg-card` + tinted shadow
 - No `h-screen` anywhere — use `min-h-[100dvh]`
+- Touch targets ≥ 36px height on mobile for buttons/selects (44px incl. visual padding)
 
 ## Navigation
 
 - Wordmark: `Toren<span class="text-primary">.</span>` with Waves icon
+- Mobile (< md): header shows wordmark + WS status only; 4 links become fixed bottom tab bar (icon 20px + label, grid-cols-4, h-16, active = `text-primary`, `aria-current="page"`)
+- Desktop (≥ md): inline header nav as before
 - Active link: `bg-primary/10 text-primary font-medium`
 - Inactive: `text-muted-foreground hover:text-foreground hover:bg-secondary`
 - Status dot: emerald (connected) / amber pulse (connecting) / rose (disconnected)
@@ -111,4 +116,5 @@ Custom: SensorScoreCard (SVG arc), SystemStatus (flat status row), AlertBanner
 
 ## Last updated
 
+2026-10-29 — mobile responsive pass: bottom tab bar navigation, adaptive tables (progressive column hiding), stacked page headers, enlarged touch targets, responsive chart heights, safe-area handling
 2026-06-02 — initial design system: slate+cyan tokens, Geist Mono, nav redesign, full semantic token sweep across all 12 components/pages

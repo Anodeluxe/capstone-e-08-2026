@@ -22,7 +22,7 @@ export default function PredictionsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-end justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Prediksi Degradasi</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
@@ -34,6 +34,7 @@ export default function PredictionsPage() {
           disabled={isPending}
           variant="outline"
           size="sm"
+          className="h-9 px-4 sm:h-7"
         >
           {isPending ? 'Menghitung...' : 'Jalankan Model'}
         </Button>
@@ -64,12 +65,12 @@ export default function PredictionsPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/50 text-muted-foreground text-left">
-                    <th className="px-4 py-3 font-medium">Dihitung Pada</th>
-                    <th className="px-4 py-3 font-medium">Sisa Waktu</th>
-                    <th className="px-4 py-3 font-medium">Perkiraan Tanggal</th>
-                    <th className="px-4 py-3 font-medium">Kepercayaan</th>
-                    <th className="px-4 py-3 font-medium">Model</th>
-                    <th className="px-4 py-3 font-medium">Notifikasi</th>
+                    <th className="px-3 py-3 sm:px-4 font-medium">Dihitung Pada</th>
+                    <th className="px-3 py-3 sm:px-4 font-medium">Sisa Waktu</th>
+                    <th className="hidden sm:table-cell px-4 py-3 font-medium">Perkiraan Tanggal</th>
+                    <th className="hidden md:table-cell px-4 py-3 font-medium">Kepercayaan</th>
+                    <th className="hidden md:table-cell px-4 py-3 font-medium">Model</th>
+                    <th className="hidden lg:table-cell px-4 py-3 font-medium">Notifikasi</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -80,13 +81,13 @@ export default function PredictionsPage() {
                         key={p.id}
                         className="border-b border-border/60 last:border-0 hover:bg-muted/40 transition-colors"
                       >
-                        <td className="px-4 py-2 text-muted-foreground whitespace-nowrap text-xs font-mono">
+                        <td className="px-3 py-2 sm:px-4 text-muted-foreground whitespace-nowrap text-xs font-mono">
                           {(() => {
                             const d = toUtcDate(p.computed_at)
                             return d ? format(d, 'dd MMM yyyy HH:mm', { locale: idLocale }) : p.computed_at
                           })()}
                         </td>
-                        <td className="px-4 py-2 font-mono tabular-nums">
+                        <td className="px-3 py-2 sm:px-4 font-mono tabular-nums">
                           {p.days_until_threshold !== null ? (
                             p.days_until_threshold.toFixed(1)
                           ) : (
@@ -95,7 +96,7 @@ export default function PredictionsPage() {
                             </span>
                           )}
                         </td>
-                        <td className="px-4 py-2">
+                        <td className="hidden sm:table-cell px-4 py-2">
                           {p.predicted_date
                             ? (() => {
                                 const d = toUtcDate(p.predicted_date)
@@ -103,11 +104,11 @@ export default function PredictionsPage() {
                               })()
                             : '—'}
                         </td>
-                        <td className="px-4 py-2 font-mono tabular-nums">
+                        <td className="hidden md:table-cell px-4 py-2 font-mono tabular-nums">
                           {!isStat && p.confidence !== null ? `${(p.confidence * 100).toFixed(0)}%` : '—'}
                         </td>
-                        <td className="px-4 py-2 text-muted-foreground font-mono">{p.model_used}</td>
-                        <td className="px-4 py-2">
+                        <td className="hidden md:table-cell px-4 py-2 text-muted-foreground font-mono">{p.model_used}</td>
+                        <td className="hidden lg:table-cell px-4 py-2">
                           <span
                             className={
                               p.notification_sent

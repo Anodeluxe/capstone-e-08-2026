@@ -22,6 +22,7 @@ export const viewport = {
   themeColor: '#0891b2',
   width: 'device-width',
   initialScale: 1,
+  viewportFit: 'cover' as const,
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -31,7 +32,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Providers>
           <PwaRegister />
           <Nav />
-          <main className="flex-1 container mx-auto max-w-7xl px-4 py-6">
+          <main className="flex-1 container mx-auto max-w-7xl px-4 py-6 pb-24 md:pb-6">
             {children}
           </main>
         </Providers>

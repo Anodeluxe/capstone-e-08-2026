@@ -141,4 +141,9 @@
   html {
     @apply font-sans;
   }
+  /* Prevent unexpected horizontal scroll on small screens */
+  html,
+  body {
+    overflow-x: clip;
+  }
 }

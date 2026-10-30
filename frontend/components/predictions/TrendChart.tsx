@@ -40,7 +40,8 @@ export default function TrendChart({ data, threshold = 60, title = 'Tren Skor 24
           Tidak ada data
         </div>
       ) : (
-        <ResponsiveContainer width="100%" height={240}>
+        <div className="h-52 sm:h-60">
+        <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={data} margin={{ top: 4, right: 24, bottom: 0, left: 0 }}>
             <defs>
               <linearGradient id="scoreGradient" x1="0" y1="0" x2="0" y2="1">
@@ -101,6 +102,7 @@ export default function TrendChart({ data, threshold = 60, title = 'Tren Skor 24
             />
           </AreaChart>
         </ResponsiveContainer>
+        </div>
       )}
     </div>
   )

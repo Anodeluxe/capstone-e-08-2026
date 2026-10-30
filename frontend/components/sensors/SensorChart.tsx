@@ -42,7 +42,8 @@ export default function SensorChart({
       style={{ boxShadow: '0 2px 12px -4px oklch(0.4 0.1 220 / 0.08)' }}
     >
       <h3 className="text-sm font-medium text-foreground mb-3">{label}</h3>
-      <ResponsiveContainer width="100%" height={200}>
+      <div className="h-44 sm:h-52">
+      <ResponsiveContainer width="100%" height="100%">
         <LineChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.91 0.008 220)" opacity={0.6} />
           <XAxis
@@ -87,6 +88,7 @@ export default function SensorChart({
           />
         </LineChart>
       </ResponsiveContainer>
+      </div>
     </div>
   )
 }

@@ -47,11 +47,11 @@ export default function ValvesPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/50 text-muted-foreground text-left">
-                    <th className="px-4 py-3 font-medium">Waktu</th>
-                    <th className="px-4 py-3 font-medium">Katup</th>
-                    <th className="px-4 py-3 font-medium">Aksi</th>
-                    <th className="px-4 py-3 font-medium">Alasan</th>
-                    <th className="px-4 py-3 font-medium">Skor saat Override</th>
+                    <th className="px-3 py-3 sm:px-4 font-medium">Waktu</th>
+                    <th className="px-3 py-3 sm:px-4 font-medium">Katup</th>
+                    <th className="px-3 py-3 sm:px-4 font-medium">Aksi</th>
+                    <th className="hidden md:table-cell px-4 py-3 font-medium">Alasan</th>
+                    <th className="hidden sm:table-cell px-4 py-3 font-medium">Skor saat Override</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -60,14 +60,14 @@ export default function ValvesPage() {
                       key={log.id}
                       className="border-b border-border/60 last:border-0 hover:bg-muted/40 transition-colors"
                     >
-                      <td className="px-4 py-2 text-muted-foreground whitespace-nowrap text-xs font-mono">
+                      <td className="px-3 py-2 sm:px-4 text-muted-foreground whitespace-nowrap text-xs font-mono">
                         {(() => {
                           const d = toUtcDate(log.overridden_at)
                           return d ? format(d, 'dd MMM yyyy HH:mm', { locale: idLocale }) : log.overridden_at
                         })()}
                       </td>
-                      <td className="px-4 py-2 capitalize">{log.valve_id}</td>
-                      <td className="px-4 py-2">
+                      <td className="px-3 py-2 sm:px-4 capitalize">{log.valve_id}</td>
+                      <td className="px-3 py-2 sm:px-4">
                         <span
                           className={cn(
                             'text-xs font-medium px-2 py-0.5 rounded-full',
@@ -79,8 +79,8 @@ export default function ValvesPage() {
                           {log.action === 'open' ? 'Buka' : 'Tutup'}
                         </span>
                       </td>
-                      <td className="px-4 py-2 text-muted-foreground">{log.reason ?? '—'}</td>
-                      <td className="px-4 py-2 text-muted-foreground font-mono tabular-nums">
+                      <td className="hidden md:table-cell px-4 py-2 text-muted-foreground">{log.reason ?? '—'}</td>
+                      <td className="hidden sm:table-cell px-4 py-2 text-muted-foreground font-mono tabular-nums">
                         {log.score_at_override !== null ? log.score_at_override.toFixed(1) : '—'}
                       </td>
                     </tr>

@@ -33,15 +33,15 @@ export default function SensorTable({ data, showSampleCount = false }: Props) {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border bg-muted/50 text-muted-foreground text-left">
-              <th className="px-4 py-3 font-medium">Waktu</th>
-              <th className="px-4 py-3 font-medium">pH</th>
-              <th className="px-4 py-3 font-medium">Turbiditas</th>
-              <th className="px-4 py-3 font-medium">TDS</th>
-              <th className="px-4 py-3 font-medium">Suhu</th>
-              <th className="px-4 py-3 font-medium">Level Air</th>
-              {showSampleCount && <th className="px-4 py-3 font-medium">Sampel</th>}
-              <th className="px-4 py-3 font-medium">Skor</th>
-              <th className="px-4 py-3 font-medium">Status</th>
+              <th className="px-3 py-3 sm:px-4 font-medium">Waktu</th>
+              <th className="hidden sm:table-cell px-4 py-3 font-medium">pH</th>
+              <th className="hidden md:table-cell px-4 py-3 font-medium">Turbiditas</th>
+              <th className="hidden md:table-cell px-4 py-3 font-medium">TDS</th>
+              <th className="hidden md:table-cell px-4 py-3 font-medium">Suhu</th>
+              <th className="hidden lg:table-cell px-4 py-3 font-medium">Level Air</th>
+              {showSampleCount && <th className="hidden md:table-cell px-4 py-3 font-medium">Sampel</th>}
+              <th className="px-3 py-3 sm:px-4 font-medium">Skor</th>
+              <th className="px-3 py-3 sm:px-4 font-medium">Status</th>
             </tr>
           </thead>
           <tbody>
@@ -55,26 +55,26 @@ export default function SensorTable({ data, showSampleCount = false }: Props) {
                     : 'hover:bg-muted/40',
                 )}
               >
-                <td className="px-4 py-2 text-muted-foreground whitespace-nowrap text-xs font-mono">
+                <td className="px-3 py-2 sm:px-4 text-muted-foreground whitespace-nowrap text-xs font-mono">
                   {(() => {
                     const d = toUtcDate(row.timestamp)
                     return d ? format(d, 'dd MMM HH:mm:ss', { locale: idLocale }) : row.timestamp
                   })()}
                 </td>
-                <td className="px-4 py-2 font-mono tabular-nums">{row.ph.toFixed(2)}</td>
-                <td className="px-4 py-2 font-mono tabular-nums">{row.turbidity.toFixed(1)} NTU</td>
-                <td className="px-4 py-2 font-mono tabular-nums">{row.tds.toFixed(0)} ppm</td>
-                <td className="px-4 py-2 font-mono tabular-nums">{row.temperature.toFixed(1)} °C</td>
-                <td className="px-4 py-2 font-mono tabular-nums">{row.water_level.toFixed(1)}%</td>
+                <td className="hidden sm:table-cell px-4 py-2 font-mono tabular-nums">{row.ph.toFixed(2)}</td>
+                <td className="hidden md:table-cell px-4 py-2 font-mono tabular-nums">{row.turbidity.toFixed(1)} NTU</td>
+                <td className="hidden md:table-cell px-4 py-2 font-mono tabular-nums">{row.tds.toFixed(0)} ppm</td>
+                <td className="hidden md:table-cell px-4 py-2 font-mono tabular-nums">{row.temperature.toFixed(1)} °C</td>
+                <td className="hidden lg:table-cell px-4 py-2 font-mono tabular-nums">{row.water_level.toFixed(1)}%</td>
                 {showSampleCount && (
-                  <td className="px-4 py-2 font-mono tabular-nums text-muted-foreground">
+                  <td className="hidden md:table-cell px-4 py-2 font-mono tabular-nums text-muted-foreground">
                     {'sample_count' in row ? row.sample_count : '—'}
                   </td>
                 )}
-                <td className={cn('px-4 py-2 font-mono tabular-nums', scoreClass(row.score_overall))}>
+                <td className={cn('px-3 py-2 sm:px-4 font-mono tabular-nums', scoreClass(row.score_overall))}>
                   {row.score_overall !== null ? row.score_overall.toFixed(1) : '—'}
                 </td>
-                <td className="px-4 py-2">
+                <td className="px-3 py-2 sm:px-4">
                   {row.is_sudden_change ? (
                     <span className="text-xs bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300 px-1.5 py-0.5 rounded-full">
                       Anomali{row.anomaly_parameter ? `: ${row.anomaly_parameter}` : ''}

@@ -94,7 +94,7 @@ export default function OverrideModal({ open, onClose, valve, action }: Props) {
                 key={preset}
                 type="button"
                 onClick={() => setReason(preset)}
-                className="text-xs px-2.5 py-1 rounded-md border border-border/80 bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                className="text-xs min-h-[36px] sm:min-h-0 px-3 py-1.5 sm:py-1 rounded-md border border-border/80 bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
                 disabled={isPending}
               >
                 {preset}

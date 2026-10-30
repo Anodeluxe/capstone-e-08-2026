@@ -70,7 +70,7 @@ export default function SensorsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-end justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Data Sensor</h1>
           <p className="text-sm text-muted-foreground mt-0.5">Riwayat pembacaan sensor</p>
@@ -78,7 +78,7 @@ export default function SensorsPage() {
         <select
           value={view}
           onChange={(e) => setView(e.target.value as ViewMode)}
-          className="rounded-md border border-input bg-background px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring text-foreground"
+          className="h-9 rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring text-foreground w-full sm:w-auto"
         >
           {VIEW_OPTIONS.map((option) => (
             <option key={option.value} value={option.value}>{option.label}</option>
