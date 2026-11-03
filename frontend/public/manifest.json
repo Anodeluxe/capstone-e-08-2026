@@ -1,6 +1,6 @@
 {
-  "name": "Toren Monitoring - DTETI UGM",
-  "short_name": "Toren E-08",
+  "name": "Monitoren - DTETI UGM",
+  "short_name": "Monitoren",
   "description": "Sistem Monitoring Kualitas Air Toren & Kontrol Katup Adaptif",
   "start_url": "/",
   "display": "standalone",

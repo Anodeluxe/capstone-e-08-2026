@@ -48,7 +48,7 @@ const char* TOPIC_VALVE_STATUS = "toren/valves/status";
 #define PIN_DS18B20        4    // OneWire digital
 #define PIN_WATER_LEVEL    33   // Analog (ultrasonic or float)
 
-// Solenoid valve relay pins (LOW = open for most relay modules)
+// Solenoid valve relay pins (polarity measured on E-08 rig: HIGH = open)
 #define PIN_VALVE_BATHROOM  25
 #define PIN_VALVE_KITCHEN   26
 #define PIN_VALVE_LAUNDRY   27
@@ -68,7 +68,7 @@ unsigned long lastPublish = 0;
 void setup() {
     Serial.begin(115200);
 
-    // Valve relay pins
+    // Valve relay pins — boot with all valves closed (safe state)
     pinMode(PIN_VALVE_BATHROOM, OUTPUT); digitalWrite(PIN_VALVE_BATHROOM, LOW);
     pinMode(PIN_VALVE_KITCHEN,  OUTPUT); digitalWrite(PIN_VALVE_KITCHEN,  LOW);
     pinMode(PIN_VALVE_LAUNDRY,  OUTPUT); digitalWrite(PIN_VALVE_LAUNDRY,  LOW);
@@ -137,7 +137,7 @@ void handleValveCommand(const String& msg) {
     String action  = doc["action"].as<String>();
     bool   isOpen  = (action == "open");
 
-    // Relay: LOW = energized (open valve), HIGH = de-energized (closed)
+    // Polaritas terukur di rig E-08: HIGH = katup terbuka, LOW = tertutup
     int pin = -1;
     if      (valveId == "bathroom") pin = PIN_VALVE_BATHROOM;
     else if (valveId == "kitchen")  pin = PIN_VALVE_KITCHEN;
@@ -145,7 +145,7 @@ void handleValveCommand(const String& msg) {
     else if (valveId == "garden")   pin = PIN_VALVE_GARDEN;
 
     if (pin >= 0) {
-        digitalWrite(pin, isOpen ? LOW : HIGH);
+        digitalWrite(pin, isOpen ? HIGH : LOW);
 
         // Acknowledge back to backend
         JsonDocument ack;

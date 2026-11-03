@@ -6,7 +6,7 @@ import type { ValveID } from '@/types'
 export const VALVE_LABELS: Record<ValveID, string> = {
   bathroom: 'Kamar Mandi',
   kitchen: 'Dapur',
-  laundry: 'Laundri',
+  laundry: 'Laundry',
   garden: 'Taman',
 }
 

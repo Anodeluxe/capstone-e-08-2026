@@ -90,7 +90,7 @@ Tinted toward bg hue (220°). No pure-black drops:
 
 ## Navigation
 
-- Wordmark: `Toren<span class="text-primary">.</span>` with Waves icon
+- Wordmark: `Monitoren<span class="text-primary">.</span>` with Waves icon
 - Mobile (< md): header shows wordmark + WS status only; 4 links become fixed bottom tab bar (icon 20px + label, grid-cols-4, h-16, active = `text-primary`, `aria-current="page"`)
 - Desktop (≥ md): inline header nav as before
 - Active link: `bg-primary/10 text-primary font-medium`
@@ -116,5 +116,6 @@ Custom: SensorScoreCard (SVG arc), SystemStatus (flat status row), AlertBanner
 
 ## Last updated
 
+2026-11-03 — Monitoren rebrand (nav wordmark, title, manifest); Katup page live WS state merge, status summary row, error/empty states, full-width valve action buttons
 2026-10-29 — mobile responsive pass: bottom tab bar navigation, adaptive tables (progressive column hiding), stacked page headers, enlarged touch targets, responsive chart heights, safe-area handling
 2026-06-02 — initial design system: slate+cyan tokens, Geist Mono, nav redesign, full semantic token sweep across all 12 components/pages

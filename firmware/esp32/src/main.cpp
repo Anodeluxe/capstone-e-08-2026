@@ -76,11 +76,11 @@ void setup() {
     delay(1000);
     Serial.println("\n=== Inisialisasi Firmware ESP32 Toren Monitoring (E-08) ===");
 
-    // Inisialisasi Pin Relai Solenoid Valve (Aktif LOW: HIGH = Tertutup, LOW = Terbuka)
-    pinMode(PIN_VALVE_BATHROOM, OUTPUT); digitalWrite(PIN_VALVE_BATHROOM, HIGH);
-    pinMode(PIN_VALVE_KITCHEN,  OUTPUT); digitalWrite(PIN_VALVE_KITCHEN,  HIGH);
-    pinMode(PIN_VALVE_LAUNDRY,  OUTPUT); digitalWrite(PIN_VALVE_LAUNDRY,  HIGH);
-    pinMode(PIN_VALVE_GARDEN,   OUTPUT); digitalWrite(PIN_VALVE_GARDEN,   HIGH);
+    // Inisialisasi Pin Relai Solenoid Valve (HIGH = Terbuka, LOW = Tertutup)
+    pinMode(PIN_VALVE_BATHROOM, OUTPUT); digitalWrite(PIN_VALVE_BATHROOM, LOW);
+    pinMode(PIN_VALVE_KITCHEN,  OUTPUT); digitalWrite(PIN_VALVE_KITCHEN,  LOW);
+    pinMode(PIN_VALVE_LAUNDRY,  OUTPUT); digitalWrite(PIN_VALVE_LAUNDRY,  LOW);
+    pinMode(PIN_VALVE_GARDEN,   OUTPUT); digitalWrite(PIN_VALVE_GARDEN,   LOW);
 
     // Inisialisasi Pin Ultrasonik
     pinMode(PIN_TRIG_US, OUTPUT);
@@ -195,10 +195,10 @@ void checkLocalAnomalySpike(float ph, float turb, float tds) {
 }
 
 void closeAllValvesEmergency() {
-    digitalWrite(PIN_VALVE_BATHROOM, HIGH);
-    digitalWrite(PIN_VALVE_KITCHEN,  HIGH);
-    digitalWrite(PIN_VALVE_LAUNDRY,  HIGH);
-    digitalWrite(PIN_VALVE_GARDEN,   HIGH);
+    digitalWrite(PIN_VALVE_BATHROOM, LOW);
+    digitalWrite(PIN_VALVE_KITCHEN,  LOW);
+    digitalWrite(PIN_VALVE_LAUNDRY,  LOW);
+    digitalWrite(PIN_VALVE_GARDEN,   LOW);
 }
 
 // ── PENGKONDISIAN & KALIBRASI SENSOR ─────────────────────────────────────────
@@ -279,7 +279,7 @@ void handleValveCommand(const String& msg) {
     String action  = doc["action"].as<String>();
     bool   isOpen  = (action == "open");
 
-    // Relai aktif LOW: LOW = koil teraliri arus (katup N/C terbuka), HIGH = tertutup
+    // Polaritas terukur di rig E-08: HIGH = katup terbuka, LOW = tertutup
     int pin = -1;
     if      (valveId == "bathroom") pin = PIN_VALVE_BATHROOM;
     else if (valveId == "kitchen")  pin = PIN_VALVE_KITCHEN;
@@ -287,7 +287,7 @@ void handleValveCommand(const String& msg) {
     else if (valveId == "garden")   pin = PIN_VALVE_GARDEN;
 
     if (pin >= 0) {
-        digitalWrite(pin, isOpen ? LOW : HIGH);
+        digitalWrite(pin, isOpen ? HIGH : LOW);
 
         // Kirim acknowledgment status katup kembali ke backend
         JsonDocument ack;

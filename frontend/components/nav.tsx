@@ -32,7 +32,7 @@ export default function Nav() {
           <Link href="/dashboard" className="flex items-center gap-2 shrink-0 group">
             <Waves className="w-4 h-4 text-primary transition-transform duration-200 group-hover:scale-110" strokeWidth={2} />
             <span className="font-semibold text-sm tracking-tight text-foreground">
-              Aminuddin<span className="text-primary">.</span>
+              Monitoren<span className="text-primary">.</span>
             </span>
           </Link>
 

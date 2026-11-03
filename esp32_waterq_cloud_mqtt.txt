@@ -174,7 +174,8 @@ void syncAllValvesToMqtt();
 void setValve(int i, bool open) {
   bool changed = (valveOpen[i] != open);
   valveOpen[i] = open;
-  digitalWrite(PIN_RELAY[i], open ? LOW : HIGH);   // aktif LOW
+  // Polaritas terukur di rig E-08: HIGH = katup terbuka, LOW = tertutup.
+  digitalWrite(PIN_RELAY[i], open ? HIGH : LOW);
   if (changed && mqtt.connected()) {
     publishValveAck(i);
   }
@@ -182,7 +183,7 @@ void setValve(int i, bool open) {
 
 void initRelays() {
   for (int i = 0; i < 4; i++) {
-    digitalWrite(PIN_RELAY[i], HIGH);  // tulis HIGH DULU supaya relay tidak sempat ON
+    digitalWrite(PIN_RELAY[i], LOW);  // state aman: semua katup tertutup
     pinMode(PIN_RELAY[i], OUTPUT);
     valveOpen[i] = false;
     prevValveOpen[i] = false;

@@ -9,7 +9,7 @@ const geistSans = Geist({ variable: '--font-sans', subsets: ['latin'] })
 const geistMono = Geist_Mono({ variable: '--font-mono', subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Toren Monitoring',
+  title: 'Monitoren',
   description: 'Sistem Monitoring Kualitas Air Toren',
   manifest: '/manifest.json',
   icons: {
