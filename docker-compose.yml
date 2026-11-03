@@ -104,7 +104,7 @@ services:
       DATABASE_SYNC_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-password}@timescaledb:5432/${POSTGRES_DB:-toren_db}
       MQTT_BROKER_HOST: mosquitto
       MQTT_BROKER_PORT: 1883
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,https://capstone-e-08-2026.vercel.app,https://amin-u.vercel.app,https://aminu.irsad.site}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,https://capstone-e-08-2026.vercel.app,https://monitoren.vercel.app,https://aminu.irsad.site}
       WAHA_BASE_URL: ${WAHA_BASE_URL:-http://waha:3000}
       WAHA_API_KEY: ${WAHA_API_KEY:-torensecretkey2026}
     extra_hosts:

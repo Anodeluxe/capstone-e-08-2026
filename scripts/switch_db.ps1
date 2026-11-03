@@ -38,7 +38,7 @@ if ($Target -eq "test") {
     Start-Sleep -Seconds 3
 
     Write-Host "`n✅ SUCCESS: Backend is now connected to 'toren_ml_test'." -ForegroundColor Green
-    Write-Host "👉 Open https://amin-u.vercel.app to preview the 9-day trend and XGBoost prediction live!"
+    Write-Host "👉 Open https://monitoren.vercel.app to preview the 9-day trend and XGBoost prediction live!"
     Write-Host "👉 When finished, switch back using: .\scripts\switch_db.ps1 prod"
 }
 elseif ($Target -eq "prod") {

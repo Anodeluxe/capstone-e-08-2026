@@ -45,7 +45,7 @@ if [ "$TARGET" == "test" ]; then
 
     echo ""
     echo "✅ SUCCESS: Backend is now connected to 'toren_ml_test'."
-    echo "👉 Open https://amin-u.vercel.app to preview the 9-day trend and XGBoost prediction live!"
+    echo "👉 Open https://monitoren.vercel.app to preview the 9-day trend and XGBoost prediction live!"
     echo "👉 When finished, switch back using: ./scripts/switch_db.sh prod"
 
 elif [ "$TARGET" == "prod" ]; then
