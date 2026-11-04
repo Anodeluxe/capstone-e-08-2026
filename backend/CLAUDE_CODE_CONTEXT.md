@@ -209,13 +209,14 @@ Each parameter gets a sub-score (0–100) based on thresholds, then weighted:
 score = ph_score * w_ph + turbidity_score * w_turb + tds_score * w_tds + temp_score * w_temp
 ```
 
-Default weights (from `.env`): ph=0.30, turbidity=0.30, tds=0.25, temperature=0.15
+Default weights (from `.env`): ph=0.306, turbidity=0.222, tds=0.194, temperature=0.278
+(same weights for every use point)
 
 Per-use-point auto-close thresholds:
-- `bathroom`: score < 60
+- `bathroom`: score < 80
 - `kitchen`: score < 65
 - `laundry`: score < 45
-- `garden`: score < 30
+- `garden`: score < 25
 
 ---
 
@@ -376,10 +377,10 @@ FONNTE_API_URL=https://api.fonnte.com/send
 NOTIF_WHATSAPP_TARGETS=628xxxxxxxxxx
 
 # Scoring weights (must sum to 1.0)
-WEIGHT_PH=0.30
-WEIGHT_TURBIDITY=0.30
-WEIGHT_TDS=0.25
-WEIGHT_TEMPERATURE=0.15
+WEIGHT_PH=0.306
+WEIGHT_TURBIDITY=0.222
+WEIGHT_TDS=0.194
+WEIGHT_TEMPERATURE=0.278
 
 # Alert thresholds
 SUDDEN_CHANGE_THRESHOLD=20.0

@@ -12,7 +12,8 @@ versa. ``tests/test_scoring_consistency.py`` verifies both produce
 identical results.
 
 Bathroom weights below match the `.env` defaults:
-WEIGHT_PH=0.30, WEIGHT_TURBIDITY=0.30, WEIGHT_TDS=0.25, WEIGHT_TEMPERATURE=0.15
+WEIGHT_PH=0.306, WEIGHT_TURBIDITY=0.222, WEIGHT_TDS=0.194, WEIGHT_TEMPERATURE=0.278
+All use points share the same weights; only the thresholds differ.
 """
 
 import numpy as np
@@ -65,19 +66,22 @@ def temperature_score(celsius) -> np.ndarray:
 
 # ─── Weights & thresholds (identical to scoring_service) ─────────────────────
 
-USE_POINT_WEIGHT_OVERRIDES: dict[str, dict[str, float]] = {
-    "bathroom": {"ph": 0.30, "turbidity": 0.30, "tds": 0.25, "temperature": 0.15},
-    "kitchen": {"ph": 0.35, "turbidity": 0.35, "tds": 0.20, "temperature": 0.10},
-    "laundry": {"ph": 0.25, "turbidity": 0.40, "tds": 0.25, "temperature": 0.10},
-    "garden": {"ph": 0.20, "turbidity": 0.30, "tds": 0.30, "temperature": 0.20},
+# Same weights for every use point; only the thresholds differ.
+PARAMETER_WEIGHTS: dict[str, float] = {
+    "ph": 0.306, "turbidity": 0.222, "tds": 0.194, "temperature": 0.278,
+}
+
+USE_POINT_WEIGHTS: dict[str, dict[str, float]] = {
+    point: PARAMETER_WEIGHTS
+    for point in ("bathroom", "kitchen", "laundry", "garden")
 }
 
 # Minimum acceptable overall score per use point before auto-close.
 USE_POINT_THRESHOLDS: dict[str, float] = {
-    "bathroom": 60.0,
+    "bathroom": 80.0,
     "kitchen": 65.0,
     "laundry": 45.0,
-    "garden": 30.0,
+    "garden": 25.0,
 }
 
 # Overall-quality threshold used by prediction_service for early warning / RUL.
@@ -100,7 +104,7 @@ def score_reading(ph: float, tds: float, turbidity: float, temperature: float) -
     temp_s = temperature_score(temperature)
 
     scores: dict[str, float] = {}
-    for point, w in USE_POINT_WEIGHT_OVERRIDES.items():
+    for point, w in USE_POINT_WEIGHTS.items():
         scores[point] = round(
             float(ph_s) * w["ph"]
             + float(turb_s) * w["turbidity"]
@@ -152,7 +156,7 @@ def overall_scores(ph, tds, turbidity, temperature) -> np.ndarray:
             + temp_s * w["temperature"],
             2,
         )
-        for point, w in USE_POINT_WEIGHT_OVERRIDES.items()
+        for point, w in USE_POINT_WEIGHTS.items()
     }
     return np.round(np.mean(list(point_scores.values()), axis=0), 2)
 

@@ -5,10 +5,16 @@ Computes a 0–100 quality score for each use point (bathroom, kitchen,
 laundry, garden) based on the multi-parameter weighted scoring approach
 described in the project proposal.
 
-Each use point has different quality standards:
-  - Bathroom / Kitchen  → highest standards (strict thresholds)
-  - Laundry             → medium standards
-  - Garden              → lowest standards (lenient thresholds)
+Each use point uses the same parameter weights; only the acceptance
+threshold differs:
+  - Bathroom → strictest (valve closes below 80)
+  - Kitchen  → 65
+  - Laundry  → 45
+  - Garden   → most lenient (25)
+
+Because the weights are shared, every use point gets the same score, so
+`overall` equals each per-point score and the valve decisions are nested
+(bathroom closes first, garden last).
 """
 
 from dataclasses import dataclass
@@ -82,41 +88,15 @@ class UsePointThresholds:
     Defines the minimum acceptable overall score per use point
     before its valve is automatically closed.
     """
-    bathroom: float = 60.0
+    bathroom: float = 80.0
     kitchen: float = 65.0
     laundry: float = 45.0
-    garden: float = 30.0
+    garden: float = 25.0
 
 
 USE_POINT_THRESHOLDS = UsePointThresholds()
 
-# Per use-point weight overrides — garden uses more lenient parameter weights
-_USE_POINT_WEIGHT_OVERRIDES: dict[str, dict[str, float]] = {
-    "bathroom": {
-        "ph": settings.weight_ph,
-        "turbidity": settings.weight_turbidity,
-        "tds": settings.weight_tds,
-        "temperature": settings.weight_temperature,
-    },
-    "kitchen": {
-        "ph": 0.35,
-        "turbidity": 0.35,
-        "tds": 0.20,
-        "temperature": 0.10,
-    },
-    "laundry": {
-        "ph": 0.25,
-        "turbidity": 0.40,
-        "tds": 0.25,
-        "temperature": 0.10,
-    },
-    "garden": {
-        "ph": 0.20,
-        "turbidity": 0.30,
-        "tds": 0.30,
-        "temperature": 0.20,
-    },
-}
+USE_POINTS = ("bathroom", "kitchen", "laundry", "garden")
 
 
 def _weighted_score(
@@ -124,13 +104,13 @@ def _weighted_score(
     turbidity_s: float,
     tds_s: float,
     temp_s: float,
-    weights: dict[str, float],
 ) -> float:
+    """Shared weighted sum — identical for every use point."""
     return (
-        ph_s * weights["ph"]
-        + turbidity_s * weights["turbidity"]
-        + tds_s * weights["tds"]
-        + temp_s * weights["temperature"]
+        ph_s * settings.weight_ph
+        + turbidity_s * settings.weight_turbidity
+        + tds_s * settings.weight_tds
+        + temp_s * settings.weight_temperature
     )
 
 
@@ -162,11 +142,8 @@ def compute_scores(reading: ESP32SensorPayload) -> ScoringResult:
     tds_s = _tds_score(reading.tds)
     temp_s = _temperature_score(reading.temperature)
 
-    scores: dict[str, float] = {}
-    for point, weights in _USE_POINT_WEIGHT_OVERRIDES.items():
-        scores[point] = round(
-            _weighted_score(ph_s, turb_s, tds_s, temp_s, weights), 2
-        )
+    score = round(_weighted_score(ph_s, turb_s, tds_s, temp_s), 2)
+    scores: dict[str, float] = dict.fromkeys(USE_POINTS, score)
 
     overall = round(
         sum(scores.values()) / len(scores), 2

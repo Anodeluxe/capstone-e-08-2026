@@ -32,7 +32,7 @@ sys.path.insert(0, str(ML_DIR))
 from scoring_model import (  # noqa: E402
     DEFAULT_SCORE_THRESHOLD,
     USE_POINT_THRESHOLDS,
-    USE_POINT_WEIGHT_OVERRIDES,
+    USE_POINT_WEIGHTS,
     ph_score,
     tds_score,
     turbidity_score,
@@ -51,7 +51,7 @@ def _mirror(payload: ESP32SensorPayload) -> dict:
     temp_s = float(temperature_score(payload.temperature))
 
     per_point = {}
-    for point, w in USE_POINT_WEIGHT_OVERRIDES.items():
+    for point, w in USE_POINT_WEIGHTS.items():
         per_point[point] = round(
             ph_s * w["ph"] + turb_s * w["turbidity"]
             + tds_s * w["tds"] + temp_s * w["temperature"], 2
@@ -113,13 +113,13 @@ def test_end_of_cycle_always_crosses_threshold():
     median data nyata) yang dipakai generator v2 sebagai kondisi akhir:
       heavy  : ph 5.23(0)   turb 34.2(0)  tds 1442(0)
       medium : ph 5.23(0)   turb 18(25)   tds 1021(20)
-      mild   : ph 5.74(40)  turb 9.0(55)  tds 612(50)
+      mild   : ph 5.74(40)  turb 9.0(55)  tds 950(20)
     Suhu dipakai 29°C (skor 100) — skor bertambah PARAH jika lebih panas.
     """
     end_sensor = [
         (5.23, 34.2, 1442.0),
         (5.23, 18.0, 1021.0),
-        (5.74, 9.0, 612.0),
+        (5.74, 9.0, 950.0),
     ]
     for ph, turb, tds in end_sensor:
         payload = ESP32SensorPayload(ph=ph, turbidity=turb, tds=tds,

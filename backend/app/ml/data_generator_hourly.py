@@ -63,7 +63,7 @@ NOISE_SIGMA = {"ph": 0.06, "turbidity": 0.12, "tds": 10.0, "temperature": 0.30}
 END_SCORES = {
     "heavy": {"ph": 0, "turbidity": 0, "tds": 0},
     "medium": {"ph": 0, "turbidity": 25, "tds": 20},
-    "mild": {"ph": 40, "turbidity": 55, "tds": 50},
+    "mild": {"ph": 40, "turbidity": 55, "tds": 20},
 }
 
 # Kadang siklus mulai dengan kondisi yang tidak 100% sempurna (realistis).

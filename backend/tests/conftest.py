@@ -28,7 +28,7 @@ def bad_reading() -> ESP32SensorPayload:
         ph=4.0,
         turbidity=30.0,
         tds=1000.0,
-        temperature=28.0,
+        temperature=45.0,
         water_level=50.0,
     )
 

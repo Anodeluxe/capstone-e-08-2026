@@ -29,8 +29,7 @@ from app.core.config import get_settings
 
 settings = get_settings()
 
-# Score threshold below which overall quality is considered unfit.
-# Matches the strictest valve threshold (kitchen = 65).
+# Score threshold below which overall quality is considered unfit (RUL target).
 DEFAULT_SCORE_THRESHOLD = 60.0
 
 # Minimum number of data points needed to make a prediction

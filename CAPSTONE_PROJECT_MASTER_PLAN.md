@@ -97,11 +97,11 @@ Sesuai instruksi, **logika skoring saat ini dibiarkan apa adanya (*as-is*) tanpa
      - `_tds_score(ppm)`: $\le 300 \to 100$, $\le 500 \to 80$, $\le 900 \to 50$, $\le 1200 \to 20$, lainnya 0.
      - `_temperature_score(celsius)`: 20–30 $\to$ 100, 15–20 & 30–35 $\to$ 75, 10–15 & 35–40 $\to$ 50, lainnya 25.
    - **Ambang Penutupan Katup (`USE_POINT_THRESHOLDS`)**:
-     - `bathroom`: 60.0
+     - `bathroom`: 80.0
      - `kitchen`: 65.0
      - `laundry`: 45.0
-     - `garden`: 30.0
-   - **Bobot Override (`_USE_POINT_WEIGHT_OVERRIDES`)**: Pembobotan spesifik untuk masing-masing titik distribusi.
+     - `garden`: 25.0
+   - **Bobot Seragam**: Semua titik distribusi memakai bobot parameter yang sama (lihat `config.py`); hanya ambang yang berbeda.
    - **Fungsi Utama**: `compute_scores(payload: ESP32SensorPayload) -> ScoringResult`.
 
 2. `backend/app/services/anomaly_service.py`
@@ -156,7 +156,7 @@ Sesuai instruksi, **logika skoring saat ini dibiarkan apa adanya (*as-is*) tanpa
 
 ### 3.5 Konfigurasi & Lingkungan
 14. `backend/app/core/config.py` & `backend/.env.example`
-    - `weight_ph = 0.30`, `weight_turbidity = 0.30`, `weight_tds = 0.25`, `weight_temperature = 0.15`
+    - `weight_ph = 0.306`, `weight_turbidity = 0.222`, `weight_tds = 0.194`, `weight_temperature = 0.278`
     - `sudden_change_threshold = 20.0`
 
 ### 3.6 Antarmuka Frontend (PWA Next.js)

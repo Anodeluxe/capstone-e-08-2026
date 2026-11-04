@@ -130,7 +130,7 @@ sebagai **422** dengan struktur `{"detail":[{"loc":[...],"msg":"...","type":"...
 | `channel` (notifikasi) | `whatsapp`, `email`, `all` | |
 | `mode` (prediksi) | `auto`, `ml`, `linear` | `auto` = coba XGBoost lalu fallback regresi |
 | Skor kualitas | `0.0 – 100.0` | 2 desimal; makin tinggi makin baik |
-| Ambang tutup otomatis | bathroom `< 60`, kitchen `< 65`, laundry `< 45`, garden `< 30` | lihat `app/services/scoring_service.py` |
+| Ambang tutup otomatis | bathroom `< 80`, kitchen `< 65`, laundry `< 45`, garden `< 25` | lihat `app/services/scoring_service.py` |
 | `is_open` | `true` = valve terbuka (air mengalir) | |
 
 ### 3.5 Trailing slash & redirect

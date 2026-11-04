@@ -47,11 +47,11 @@ class Settings(BaseSettings):
     fonnte_api_url: str = "https://api.fonnte.com/send"
     notif_whatsapp_targets: str = ""  # "628xxx,628yyy" or "08xxx"
 
-    # ── Scoring weights ───────────────────────────────────────────────────────
-    weight_ph: float = 0.30
-    weight_turbidity: float = 0.30
-    weight_tds: float = 0.25
-    weight_temperature: float = 0.15
+    # ── Scoring weights (same for every use point; must sum to 1.0) ───────────
+    weight_ph: float = 0.306
+    weight_turbidity: float = 0.222
+    weight_tds: float = 0.194
+    weight_temperature: float = 0.278
 
     # ── Alert thresholds ──────────────────────────────────────────────────────
     sudden_change_threshold: float = 20.0  # score-point drop = sudden anomaly
