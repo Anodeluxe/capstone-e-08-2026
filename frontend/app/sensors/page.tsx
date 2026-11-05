@@ -9,7 +9,7 @@ import type { HourlySensorReading, SensorReading } from '@/types'
 
 type SensorNumericKey = keyof Pick<
   SensorReading,
-  'ph' | 'turbidity' | 'tds' | 'temperature' | 'water_level'
+  'ph' | 'turbidity' | 'tds' | 'temperature'
 >
 
 const SENSOR_PARAMS: Array<{
@@ -22,7 +22,6 @@ const SENSOR_PARAMS: Array<{
   { dataKey: 'turbidity', label: 'Turbiditas (NTU)', color: '#d97706', unit: ' NTU' }, // amber-600
   { dataKey: 'tds', label: 'TDS (ppm)', color: '#059669', unit: ' ppm' },  // emerald-600
   { dataKey: 'temperature', label: 'Suhu (°C)', color: '#f43f5e', unit: ' °C' },       // rose-500
-  { dataKey: 'water_level', label: 'Level Air (%)', color: '#6366f1', unit: '%' },     // indigo-500
 ]
 
 type ViewMode = '6h' | '24h' | '48h' | '72h' | 'hourly'

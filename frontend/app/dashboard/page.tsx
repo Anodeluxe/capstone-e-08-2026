@@ -75,7 +75,6 @@ export default function DashboardPage() {
               { label: 'Turbiditas', value: latest.turbidity.toFixed(1), unit: ' NTU' },
               { label: 'TDS', value: latest.tds.toFixed(0), unit: ' ppm' },
               { label: 'Suhu', value: latest.temperature.toFixed(1), unit: ' °C' },
-              { label: 'Level Air', value: latest.water_level.toFixed(1), unit: '%' },
             ].map(({ label, value, unit }) => (
               <div
                 key={label}
