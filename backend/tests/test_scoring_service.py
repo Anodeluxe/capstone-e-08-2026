@@ -29,16 +29,20 @@ class TestPhScore:
         assert _ph_score(6.5) == 100.0
         assert _ph_score(8.5) == 100.0
 
-    def test_acceptable_range(self):
-        assert _ph_score(6.2) == 70.0
-        assert _ph_score(8.7) == 70.0
+    def test_anchors(self):
+        assert _ph_score(6.0) == pytest.approx(70.0)
+        assert _ph_score(9.0) == pytest.approx(70.0)
+        assert _ph_score(5.5) == pytest.approx(40.0)
+        assert _ph_score(9.5) == pytest.approx(40.0)
 
-    def test_poor_range(self):
-        assert _ph_score(5.7) == 40.0
-        assert _ph_score(9.2) == 40.0
+    def test_linear_between_anchors(self):
+        assert _ph_score(6.25) == pytest.approx(85.0)
+        assert _ph_score(8.75) == pytest.approx(85.0)
+        assert _ph_score(5.75) == pytest.approx(55.0)
+        assert _ph_score(9.25) == pytest.approx(55.0)
 
     def test_unacceptable(self):
-        assert _ph_score(4.0) == 0.0
+        assert _ph_score(5.0) == 0.0
         assert _ph_score(10.0) == 0.0
         assert _ph_score(0.0) == 0.0
         assert _ph_score(14.0) == 0.0
@@ -51,20 +55,20 @@ class TestTurbidityScore:
         assert _turbidity_score(0.5) == 100.0
         assert _turbidity_score(1.0) == 100.0
 
-    def test_acceptable(self):
-        assert _turbidity_score(3.0) == 80.0
-        assert _turbidity_score(5.0) == 80.0
+    def test_anchors(self):
+        assert _turbidity_score(5.0) == pytest.approx(80.0)
+        assert _turbidity_score(10.0) == pytest.approx(55.0)
+        assert _turbidity_score(25.0) == pytest.approx(25.0)
+        assert _turbidity_score(50.0) == 0.0
 
-    def test_poor(self):
-        assert _turbidity_score(7.0) == 55.0
-        assert _turbidity_score(10.0) == 55.0
-
-    def test_very_poor(self):
-        assert _turbidity_score(15.0) == 25.0
-        assert _turbidity_score(25.0) == 25.0
+    def test_linear_between_anchors(self):
+        assert _turbidity_score(3.0) == pytest.approx(90.0)
+        assert _turbidity_score(7.5) == pytest.approx(67.5)
+        assert _turbidity_score(17.5) == pytest.approx(40.0)
+        assert _turbidity_score(37.5) == pytest.approx(12.5)
 
     def test_unacceptable(self):
-        assert _turbidity_score(30.0) == 0.0
+        assert _turbidity_score(60.0) == 0.0
         assert _turbidity_score(100.0) == 0.0
 
 
@@ -75,20 +79,20 @@ class TestTdsScore:
         assert _tds_score(100.0) == 100.0
         assert _tds_score(300.0) == 100.0
 
-    def test_acceptable(self):
-        assert _tds_score(400.0) == 80.0
-        assert _tds_score(500.0) == 80.0
+    def test_anchors(self):
+        assert _tds_score(500.0) == pytest.approx(80.0)
+        assert _tds_score(900.0) == pytest.approx(50.0)
+        assert _tds_score(1200.0) == pytest.approx(20.0)
+        assert _tds_score(1500.0) == 0.0
 
-    def test_poor(self):
-        assert _tds_score(600.0) == 50.0
-        assert _tds_score(900.0) == 50.0
-
-    def test_very_poor(self):
-        assert _tds_score(1000.0) == 20.0
-        assert _tds_score(1200.0) == 20.0
+    def test_linear_between_anchors(self):
+        assert _tds_score(400.0) == pytest.approx(90.0)
+        assert _tds_score(700.0) == pytest.approx(65.0)
+        assert _tds_score(1050.0) == pytest.approx(35.0)
+        assert _tds_score(1350.0) == pytest.approx(10.0)
 
     def test_unacceptable(self):
-        assert _tds_score(1500.0) == 0.0
+        assert _tds_score(1800.0) == 0.0
 
 
 # ─── Temperature sub-scorer ────────────────────────────────────────────────────
@@ -99,15 +103,23 @@ class TestTemperatureScore:
         assert _temperature_score(20.0) == 100.0
         assert _temperature_score(30.0) == 100.0
 
-    def test_cool_or_warm(self):
-        assert _temperature_score(17.0) == 75.0
-        assert _temperature_score(33.0) == 75.0
+    def test_anchors(self):
+        assert _temperature_score(15.0) == pytest.approx(75.0)
+        assert _temperature_score(35.0) == pytest.approx(75.0)
+        assert _temperature_score(10.0) == pytest.approx(50.0)
+        assert _temperature_score(40.0) == pytest.approx(50.0)
+        assert _temperature_score(5.0) == pytest.approx(25.0)
+        assert _temperature_score(45.0) == pytest.approx(25.0)
 
-    def test_cold_or_hot(self):
-        assert _temperature_score(12.0) == 50.0
-        assert _temperature_score(37.0) == 50.0
+    def test_linear_between_anchors(self):
+        assert _temperature_score(17.5) == pytest.approx(87.5)
+        assert _temperature_score(32.5) == pytest.approx(87.5)
+        assert _temperature_score(12.5) == pytest.approx(62.5)
+        assert _temperature_score(37.5) == pytest.approx(62.5)
+        assert _temperature_score(7.5) == pytest.approx(37.5)
+        assert _temperature_score(42.5) == pytest.approx(37.5)
 
-    def test_extreme(self):
+    def test_extreme_clamped(self):
         assert _temperature_score(0.0) == 25.0
         assert _temperature_score(50.0) == 25.0
 
@@ -159,7 +171,7 @@ class TestComputeScores:
     def test_borderline_reading_selective_close(self, borderline_reading):
         """Strict valves (bathroom/kitchen) may close while garden stays open."""
         result = compute_scores(borderline_reading)
-        # Garden threshold is very low (30), so it should stay open
+        # Garden threshold is very low (25), so it should stay open
         assert "garden" not in result.valves_to_close
 
     def test_overall_is_average_of_use_points(self, good_reading):

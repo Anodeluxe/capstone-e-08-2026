@@ -7,6 +7,7 @@ import type { PredictionResult } from '@/types'
 
 interface Props {
   prediction: PredictionResult | null
+  currentScore?: number | null
   isLoading?: boolean
 }
 
@@ -18,7 +19,14 @@ function urgencyClass(days: number | null): string {
   return 'text-emerald-600 dark:text-emerald-400'
 }
 
-export default function ETACard({ prediction, isLoading }: Props) {
+function scoreClass(score: number | null | undefined): string {
+  if (score == null) return 'text-muted-foreground'
+  if (score <= 80) return 'text-rose-600 dark:text-rose-400'
+  if (score <= 85) return 'text-amber-600 dark:text-amber-400'
+  return 'text-emerald-600 dark:text-emerald-400'
+}
+
+export default function ETACard({ prediction, currentScore, isLoading }: Props) {
   if (isLoading) {
     return (
       <div className="rounded-xl border border-border bg-card p-6 animate-pulse space-y-3">
@@ -40,6 +48,29 @@ export default function ETACard({ prediction, isLoading }: Props) {
   const { days_until_threshold: days, predicted_date, confidence, model_used } = prediction
   const isStat = isStatisticalModel(model_used)
   const confidencePct = confidence !== null ? (confidence * 100).toFixed(0) : null
+
+  // RUL hanya ditampilkan bila <= 30 hari; di atas itu tampilkan skor air saja.
+  const isBeyond30d = prediction.rul_hours != null && prediction.rul_hours > 720
+
+  if (isBeyond30d) {
+    return (
+      <div
+        className="rounded-xl border border-border bg-card p-6"
+        style={{ boxShadow: '0 2px 12px -4px oklch(0.4 0.1 220 / 0.08)' }}
+      >
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest mb-2">
+          Skor Kualitas Air
+        </p>
+        <p className={cn('text-4xl font-bold font-mono tabular-nums mb-1', scoreClass(currentScore))}>
+          {currentScore != null ? currentScore.toFixed(1) : '—'}
+          <span className="text-xl font-normal ml-1">/ 100</span>
+        </p>
+        <p className="text-xs text-muted-foreground">
+          RUL diperkirakan lebih dari 30 hari. Angka RUL baru ditampilkan saat mendekati ambang.
+        </p>
+      </div>
+    )
+  }
 
   return (
     <div

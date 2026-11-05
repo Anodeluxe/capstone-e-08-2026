@@ -472,14 +472,14 @@ Dijalankan otomatis tiap jam oleh APScheduler (`prediction_job`).
 
 | Query | Tipe | Default | Rentang/Enum | Keterangan |
 |---|---|---|---|---|
-| `hours` | int | `169` | 6–720 | Lookback data skor |
+| `hours` | int | `73` | 6–720 | Lookback data skor |
 | `mode` | string | `auto` | `auto` \| `ml` \| `linear` | Paksa jalur model |
 
 Efek: **menulis** satu baris baru ke `prediction_results`.
 
 ```json
 {
-  "data_points": 168,
+  "data_points": 72,
   "current_score": 53.75,
   "prediction": {
     "rul_hours": 420.0,
@@ -489,7 +489,7 @@ Efek: **menulis** satu baris baru ke `prediction_results`.
     "within_30d_window": true,
     "display_hint": "machine_learning_rul",
     "confidence": 0.91,
-    "model_used": "xgb_v2_horizon_30d",
+    "model_used": "xgb_v3_lean_30d",
     "already_below_threshold": false,
     "trend_direction": "degrading",
     "is_early_warning_active": false
@@ -500,7 +500,7 @@ Efek: **menulis** satu baris baru ke `prediction_results`.
 Kunci `prediction` **bervariasi** menurut jalur:
 - Jalur ML (`within_30d_window=true`): `rul_hours`, `rul_days`, `predicted_date`, `confidence`, `model_used`, `display_hint="machine_learning_rul"`.
 - Jalur regresi: `display_hint="regression_eta"`, `within_30d_window=null`, `is_early_warning_active=false`.
-- Di luar horizon 30 hari: `rul_hours`/`days_until_threshold`/`predicted_date` = `null`, `display_hint="expert_schedule_3_4_months"`.
+- Di luar horizon 30 hari: `days_until_threshold`/`predicted_date` = `null`, `display_hint="score_only"`, `rul_hours` berisi prediksi mentah (>720) sebagai penanda. Dashboard menampilkan skor air saja.
 
 Konsumen harus memperlakukan field sebagai **nullable** dan membaca `display_hint`
 untuk memutuskan cara menampilkan.

@@ -38,7 +38,7 @@ def test_feature_matrix_matches_model_contract():
     assert list(result.columns) == FEATURE_COLUMNS
     assert len(result) == MIN_HOURLY_ROWS
     assert result["elapsed_hours"].iloc[-1] == pytest.approx(0.5)
-    assert result["score_drop_168"].iloc[-1] == pytest.approx(-16.8)
+    assert result["score_drop_72"].iloc[-1] == pytest.approx(-7.2)
 
 
 def test_feature_matrix_rejects_short_history():

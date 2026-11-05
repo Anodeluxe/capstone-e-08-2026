@@ -1,12 +1,13 @@
 """
-Test & Validate ML Prediction Pipeline (XGBoost RUL v2 Horizon)
+Test & Validate ML Prediction Pipeline (XGBoost RUL v3 Lean A)
 Using the isolated test database: toren_ml_test.
 
 Validates:
-1. Hourly aggregation over 169+ hours
-2. Feature engineering: extraction of 22 rolling & lag features
-3. Model selection: activates 'xgb_v2_horizon_30d' instead of fallback
+1. Hourly aggregation over 73+ hours
+2. Feature engineering: extraction of 17 rolling & lag features
+3. Model selection: activates 'xgb_v3_lean_30d' instead of fallback
 4. RUL estimation, predicted date, and confidence (R^2)
+5. Score-only display when RUL > 30 days
 
 Usage:
     python backend/scripts/test_ml_prediction.py
@@ -30,7 +31,7 @@ sys.path.insert(0, str(backend_dir))
 from app.core.config import get_settings
 from app.models.drain_log import DrainLog
 from app.models.sensor_reading import SensorReading
-from app.services.drain_log_service import get_elapsed_fraction
+from app.services.drain_log_service import get_active_drain_log, get_elapsed_fraction
 from app.services.ml_prediction_service import get_latest_features_async, predict_hybrid
 
 
@@ -44,7 +45,7 @@ def get_async_test_db_url(db_name: str) -> str:
     return f"postgresql+asyncpg://{user}:{password}@{host}:{port}/{db_name}"
 
 
-async def run_test(db_name: str, lookback_hours: int = 169):
+async def run_test(db_name: str, lookback_hours: int = 73):
     async_url = get_async_test_db_url(db_name)
     print(f"Connecting to test database '{db_name}'...")
     engine = create_async_engine(async_url, echo=False)
@@ -75,6 +76,8 @@ async def run_test(db_name: str, lookback_hours: int = 169):
 
         # Fetch DrainLog elapsed fraction
         elapsed_fraction = await get_elapsed_fraction(session)
+        active_log = await get_active_drain_log(session)
+        cycle_started_at = active_log.started_at if active_log else None
         print(f"  • Elapsed Cycle  : {elapsed_fraction * 100:.2f}% of 2400h cycle")
 
         # Fetch recent readings for predict_hybrid input
@@ -103,6 +106,7 @@ async def run_test(db_name: str, lookback_hours: int = 169):
             session,
             lookback_hours=lookback_hours,
             elapsed_fraction=elapsed_fraction,
+            cycle_started_at=cycle_started_at,
         )
 
         print("\n==================================================")
@@ -116,8 +120,8 @@ async def run_test(db_name: str, lookback_hours: int = 169):
         conf_pct = f"{conf * 100:.1f}%" if conf is not None else "N/A"
 
         print(f"• Model Terpilih      : {model_name}")
-        if model_name == "xgb_v2_horizon_30d":
-            print(f"  Status              : ✅ SUCCESS (XGBoost Active, syarat >= 169h terpenuhi)")
+        if model_name == "xgb_v3_lean_30d":
+            print(f"  Status              : ✅ SUCCESS (XGBoost Active, syarat >= 73h terpenuhi)")
         else:
             print(f"  Status              : ⚠️ FALLBACK ({model_name})")
 
@@ -133,7 +137,6 @@ async def run_test(db_name: str, lookback_hours: int = 169):
             print(f"  - score_overall       : {row.get('score_overall', 0):.2f}")
             print(f"  - score_drop_24       : {row.get('score_drop_24', 0):.2f} (penurunan skor dlm 24 jam)")
             print(f"  - score_drop_72       : {row.get('score_drop_72', 0):.2f} (penurunan skor dlm 72 jam)")
-            print(f"  - score_drop_168      : {row.get('score_drop_168', 0):.2f} (penurunan skor dlm 7 hari)")
             print(f"  - score_MA_24         : {row.get('score_MA_24', 0):.2f} (moving average 24 jam)")
             print(f"  - turbidity_raw       : {row.get('turbidity_raw', 0):.2f} NTU")
             print(f"  - tds_raw             : {row.get('tds_raw', 0):.1f} ppm")
@@ -146,7 +149,7 @@ async def run_test(db_name: str, lookback_hours: int = 169):
 def main():
     parser = argparse.ArgumentParser(description="Test ML prediction on isolated database")
     parser.add_argument("--db-name", default="toren_ml_test", help="Test database name")
-    parser.add_argument("--lookback-hours", type=int, default=169, help="Lookback window in hours (default: 169)")
+    parser.add_argument("--lookback-hours", type=int, default=73, help="Lookback window in hours (default: 73)")
     args = parser.parse_args()
 
     asyncio.run(run_test(args.db_name, lookback_hours=args.lookback_hours))

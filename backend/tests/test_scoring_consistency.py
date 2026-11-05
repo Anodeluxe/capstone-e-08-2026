@@ -2,15 +2,15 @@
 Test Konsistensi Skor — `app/ml/scoring_model.py` vs `scoring_service.py`
 ─────────────────────────────────────────────────────────────────────────
 Mirror skoring di folder ML harus identik persis dengan implementasi
-produksi (`backend/app/services/scoring_service.py`). Karena generator v2
-menurunkan RUL dari `score_overall <= 60`, ketidaksinkronan di sini akan
+produksi (`backend/app/services/scoring_service.py`). Karena generator v3
+menurunkan RUL dari `score_overall <= 80`, ketidaksinkronan di sini akan
 membuat target training meleset dari momen alarm asli.
 
 Yang dibandingkan:
   1. Sub-score, per-use-point, overall (selisih < 1e-9)
   2. VALVES_TO_CLOSE
-  3. Jaminan generator v2: kombinasi END (akhir siklus) harus
-     `overall <= 60` di implementasi produksi → alarm pasti ter-picu.
+  3. Jaminan generator v3: kombinasi END (akhir siklus) harus
+     `overall <= 80` di implementasi produksi → alarm pasti ter-picu.
 
 Menjalankan:  cd backend && venv_fikar/bin/python -m pytest tests/test_scoring_consistency.py -q
 """
@@ -107,19 +107,19 @@ def test_identical_on_random_readings():
 
 
 def test_end_of_cycle_always_crosses_threshold():
-    """Akhir siklus generator v2 — kombinasi END harus `overall <= 60`.
+    """Akhir siklus generator — kombinasi END harus `overall <= 80`.
 
-    Nilai SENSOR di bawah = hasil inverse band sub-score 0/25/40 (hasil
-    median data nyata) yang dipakai generator v2 sebagai kondisi akhir:
-      heavy  : ph 5.23(0)   turb 34.2(0)  tds 1442(0)
-      medium : ph 5.23(0)   turb 18(25)   tds 1021(20)
-      mild   : ph 5.74(40)  turb 9.0(55)  tds 950(20)
+    Nilai SENSOR di bawah = nilai anchor sub-score 0/25/40/55 yang dipakai
+    generator v3 sebagai kondisi akhir:
+      heavy  : ph 5.0(0)   turb 50(0)   tds 1500(0)
+      medium : ph 5.0(0)   turb 25(25)  tds 1200(20)
+      mild   : ph 5.5(40)  turb 10(55)  tds 1200(20)
     Suhu dipakai 29°C (skor 100) — skor bertambah PARAH jika lebih panas.
     """
     end_sensor = [
-        (5.23, 34.2, 1442.0),
-        (5.23, 18.0, 1021.0),
-        (5.74, 9.0, 950.0),
+        (5.0, 50.0, 1500.0),
+        (5.0, 25.0, 1200.0),
+        (5.5, 10.0, 1200.0),
     ]
     for ph, turb, tds in end_sensor:
         payload = ESP32SensorPayload(ph=ph, turbidity=turb, tds=tds,

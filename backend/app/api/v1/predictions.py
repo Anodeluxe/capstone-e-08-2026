@@ -26,7 +26,7 @@ async def get_latest_predictions(db: AsyncSession = Depends(get_db)):
 
 @router.get("/run", response_model=dict)
 async def run_prediction_now(
-    hours: int = Query(default=169, ge=6, le=720),
+    hours: int = Query(default=73, ge=6, le=720),
     mode: str = Query(default="auto", pattern="^(auto|ml|linear)$"),
     db: AsyncSession = Depends(get_db),
 ):

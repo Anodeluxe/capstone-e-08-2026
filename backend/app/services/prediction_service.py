@@ -30,17 +30,16 @@ from app.core.config import get_settings
 settings = get_settings()
 
 # Score threshold below which overall quality is considered unfit (RUL target).
-DEFAULT_SCORE_THRESHOLD = 60.0
+DEFAULT_SCORE_THRESHOLD = 80.0
 
 # Minimum number of data points needed to make a prediction
 MIN_DATA_POINTS = 12  # ~1 hour at 5-min intervals
 
-# XGBoost v2 Production Model Features
+# XGBoost v3 Lean A Production Model Features
 FEATURE_COLUMNS = [
     "elapsed_hours", "ph_raw", "tds_raw", "turbidity_raw", "temperature_raw",
-    "score_overall", "score_drop_24", "score_drop_72", "score_drop_168",
-    "score_MA_24", "score_MA_72", "score_STD_24",
-    "turbidity_raw_MA24", "tds_raw_MA24", "ph_raw_MA24",
+    "score_overall", "score_drop_24", "score_drop_72",
+    "score_MA_24", "score_STD_24",
     "turbidity_raw_drop24", "tds_raw_drop24", "ph_raw_drop24",
     "turbidity_raw_drop72", "tds_raw_drop72", "ph_raw_drop72",
     "hour_of_day",
@@ -54,7 +53,7 @@ def _get_xgb_bundle():
     global _XGB_BUNDLE, _XGB_LOAD_ATTEMPTED
     if not _XGB_LOAD_ATTEMPTED:
         _XGB_LOAD_ATTEMPTED = True
-        model_path = Path(__file__).resolve().parents[1] / "ml" / "models" / "xgb_model_hourly_v2_horizon.pkl"
+        model_path = Path(__file__).resolve().parents[1] / "ml" / "models" / "xgb_model_v3.pkl"
         if model_path.exists():
             try:
                 _XGB_BUNDLE = joblib.load(str(model_path))
@@ -216,7 +215,7 @@ def _insufficient_data_result() -> dict:
 
 def predict_rul_from_readings(readings: list[dict] | pd.DataFrame) -> dict:
     """
-    Predict Remaining Useful Life (RUL) using the pulled XGBoost v2 horizon model.
+    Predict Remaining Useful Life (RUL) using the pulled XGBoost v3 Lean A model.
     Falls back gracefully to predict_eta() if the XGBoost bundle is unavailable or
     if inputs cannot be processed.
     """
@@ -267,27 +266,23 @@ def predict_rul_from_readings(readings: list[dict] | pd.DataFrame) -> dict:
             first_ts = ts_series.iloc[0]
 
             elapsed_hours = max(0.0, (latest_ts - first_ts).total_seconds() / 3600.0)
+            # Estimasi fraksi siklus; jalur produksi utama memakai elapsed_fraction
+            # dari drain log. Nilai 2400 jam = titik tengah siklus 90-120 hari.
+            elapsed_fraction = min(1.0, elapsed_hours / 2400.0)
             hour_of_day = int(latest_ts.hour)
 
             mask_24h = ts_series >= (latest_ts - timedelta(hours=24))
             mask_72h = ts_series >= (latest_ts - timedelta(hours=72))
-            mask_168h = ts_series >= (latest_ts - timedelta(hours=168))
 
             sub_24 = df[mask_24h]
             sub_72 = df[mask_72h]
-            sub_168 = df[mask_168h]
 
-            score_drop_24 = float(sub_24.iloc[0]["score_overall"] - current_score)
-            score_drop_72 = float(sub_72.iloc[0]["score_overall"] - current_score)
-            score_drop_168 = float(sub_168.iloc[0]["score_overall"] - current_score)
+            # Sama dengan training: diff(lag) = nilai sekarang - nilai masa lalu.
+            score_drop_24 = float(current_score - sub_24.iloc[0]["score_overall"])
+            score_drop_72 = float(current_score - sub_72.iloc[0]["score_overall"])
 
             score_MA_24 = float(sub_24["score_overall"].mean())
-            score_MA_72 = float(sub_72["score_overall"].mean())
             score_STD_24 = float(sub_24["score_overall"].std(ddof=0)) if len(sub_24) > 1 else 0.0
-
-            turb_MA_24 = float(sub_24["turbidity_raw"].mean())
-            tds_MA_24 = float(sub_24["tds_raw"].mean())
-            ph_MA_24 = float(sub_24["ph_raw"].mean())
 
             turb_drop_24 = float(latest["turbidity_raw"] - sub_24.iloc[0]["turbidity_raw"])
             tds_drop_24 = float(latest["tds_raw"] - sub_24.iloc[0]["tds_raw"])
@@ -298,7 +293,7 @@ def predict_rul_from_readings(readings: list[dict] | pd.DataFrame) -> dict:
             ph_drop_72 = float(latest["ph_raw"] - sub_72.iloc[0]["ph_raw"])
 
             feature_dict = {
-                "elapsed_hours": elapsed_hours,
+                "elapsed_hours": elapsed_fraction,
                 "ph_raw": float(latest["ph_raw"]),
                 "tds_raw": float(latest["tds_raw"]),
                 "turbidity_raw": float(latest["turbidity_raw"]),
@@ -306,13 +301,8 @@ def predict_rul_from_readings(readings: list[dict] | pd.DataFrame) -> dict:
                 "score_overall": current_score,
                 "score_drop_24": score_drop_24,
                 "score_drop_72": score_drop_72,
-                "score_drop_168": score_drop_168,
                 "score_MA_24": score_MA_24,
-                "score_MA_72": score_MA_72,
                 "score_STD_24": score_STD_24,
-                "turbidity_raw_MA24": turb_MA_24,
-                "tds_raw_MA24": tds_MA_24,
-                "ph_raw_MA24": ph_MA_24,
                 "turbidity_raw_drop24": turb_drop_24,
                 "tds_raw_drop24": tds_drop_24,
                 "ph_raw_drop24": ph_drop_24,
@@ -325,16 +315,17 @@ def predict_rul_from_readings(readings: list[dict] | pd.DataFrame) -> dict:
             model_features = bundle.get("feature_columns", FEATURE_COLUMNS)
             X = np.array([[feature_dict.get(col, 0.0) for col in model_features]], dtype=np.float32)
             raw_pred_hours = float(bundle["model"].predict(X)[0])
-            cap_hours = float(bundle.get("target_cap_hours", 720.0))
+            cap_hours = float(bundle.get("target_cap_hours", 2880.0))
             bounded_hours = max(0.0, min(cap_hours, raw_pred_hours))
             days_until = round(bounded_hours / 24.0, 1)
             pred_date = latest_ts + timedelta(hours=bounded_hours)
+            metrics = bundle.get("metrics", {})
 
             return {
                 "days_until_threshold": days_until,
                 "predicted_date": pred_date.to_pydatetime() if hasattr(pred_date, "to_pydatetime") else pred_date,
-                "confidence": 0.88,
-                "model_used": "xgb_model_hourly_v2_horizon",
+                "confidence": float(metrics.get("r2_ews", metrics.get("r2", 0.0))),
+                "model_used": bundle.get("model_name", "xgb_v3_lean_30d"),
                 "already_below_threshold": False,
                 "trend_direction": "degrading" if days_until < 25.0 else "stable",
                 "is_early_warning_active": bool(days_until <= 10.0),

@@ -60,7 +60,7 @@ class Settings(BaseSettings):
     # ── ML / RUL ──────────────────────────────────────────────────────────────
     ml_enabled: bool = True
     ml_active_model: str = "xgboost"
-    ml_lookback_hours: int = 169
+    ml_lookback_hours: int = 73
     early_warning_hours: float = 240.0
     ml_elapsed_fraction: float = 0.0  # posisi siklus (0.0=baru drain, 1.0=akhir)
 

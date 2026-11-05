@@ -17,6 +17,7 @@ Because the weights are shared, every use point gets the same score, so
 (bathroom closes first, garden last).
 """
 
+from bisect import bisect_right
 from dataclasses import dataclass
 
 from app.core.config import get_settings
@@ -26,60 +27,51 @@ settings = get_settings()
 
 
 # ─── Per-parameter scoring lookup ─────────────────────────────────────────────
-# Maps a raw sensor value → a 0–100 sub-score.
+# Maps a raw sensor value → a 0–100 sub-score by linear interpolation between
+# standards-based anchors. Values outside the outermost anchors are clamped.
 # Thresholds are based on WHO / Indonesian drinking-water standards adapted
 # for non-consumption domestic use.
 
+def _interp(value: float, xs: tuple[float, ...], ys: tuple[float, ...]) -> float:
+    """Piecewise-linear lookup between anchors; clamps outside the range."""
+    if value <= xs[0]:
+        return ys[0]
+    if value >= xs[-1]:
+        return ys[-1]
+    i = bisect_right(xs, value)
+    x0, x1 = xs[i - 1], xs[i]
+    y0, y1 = ys[i - 1], ys[i]
+    return y0 + (value - x0) * (y1 - y0) / (x1 - x0)
+
+
+_PH_X = (5.0, 5.5, 6.0, 6.5, 8.5, 9.0, 9.5, 10.0)
+_PH_Y = (0.0, 40.0, 70.0, 100.0, 100.0, 70.0, 40.0, 0.0)
+_TURB_X = (0.0, 1.0, 5.0, 10.0, 25.0, 50.0)
+_TURB_Y = (100.0, 100.0, 80.0, 55.0, 25.0, 0.0)
+_TDS_X = (0.0, 300.0, 500.0, 900.0, 1200.0, 1500.0)
+_TDS_Y = (100.0, 100.0, 80.0, 50.0, 20.0, 0.0)
+_TEMP_X = (5.0, 10.0, 15.0, 20.0, 30.0, 35.0, 40.0, 45.0)
+_TEMP_Y = (25.0, 50.0, 75.0, 100.0, 100.0, 75.0, 50.0, 25.0)
+
+
 def _ph_score(ph: float) -> float:
-    """Ideal range 6.5–8.5. Outside → rapidly drops."""
-    if 6.5 <= ph <= 8.5:
-        return 100.0
-    elif 6.0 <= ph < 6.5 or 8.5 < ph <= 9.0:
-        return 70.0
-    elif 5.5 <= ph < 6.0 or 9.0 < ph <= 9.5:
-        return 40.0
-    else:
-        return 0.0
+    """Ideal 6.5–8.5 (100), drops linearly to 0 at pH 5.0 / 10.0."""
+    return _interp(ph, _PH_X, _PH_Y)
 
 
 def _turbidity_score(ntu: float) -> float:
-    """WHO guideline < 1 NTU for drinking; ≤ 5 NTU acceptable for domestic."""
-    if ntu <= 1.0:
-        return 100.0
-    elif ntu <= 5.0:
-        return 80.0
-    elif ntu <= 10.0:
-        return 55.0
-    elif ntu <= 25.0:
-        return 25.0
-    else:
-        return 0.0
+    """Ideal ≤ 1 NTU (100), drops linearly to 0 at 50 NTU."""
+    return _interp(ntu, _TURB_X, _TURB_Y)
 
 
 def _tds_score(ppm: float) -> float:
-    """WHO guideline ≤ 500 ppm acceptable; ≤ 300 ppm good."""
-    if ppm <= 300:
-        return 100.0
-    elif ppm <= 500:
-        return 80.0
-    elif ppm <= 900:
-        return 50.0
-    elif ppm <= 1200:
-        return 20.0
-    else:
-        return 0.0
+    """Ideal ≤ 300 ppm (100), drops linearly to 0 at 1500 ppm."""
+    return _interp(ppm, _TDS_X, _TDS_Y)
 
 
 def _temperature_score(celsius: float) -> float:
-    """Comfortable range 20–30 °C. High temp accelerates bacterial growth."""
-    if 20 <= celsius <= 30:
-        return 100.0
-    elif 15 <= celsius < 20 or 30 < celsius <= 35:
-        return 75.0
-    elif 10 <= celsius < 15 or 35 < celsius <= 40:
-        return 50.0
-    else:
-        return 25.0
+    """Ideal 20–30 °C (100), drops linearly to 25 at 5 °C / 45 °C."""
+    return _interp(celsius, _TEMP_X, _TEMP_Y)
 
 
 @dataclass

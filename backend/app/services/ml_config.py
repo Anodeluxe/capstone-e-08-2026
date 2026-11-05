@@ -23,7 +23,7 @@ from app.services.drain_log_service import (
 DEFAULT_CYCLE_ESTIMATE_HOURS = 2400.0
 
 # Model path (could be moved to DB later)
-MODEL_PATH = "backend/app/ml/models/xgb_model_hourly_v2_horizon.pkl"
+MODEL_PATH = "backend/app/ml/models/xgb_model_v3.pkl"
 
 
 class MLConfig:

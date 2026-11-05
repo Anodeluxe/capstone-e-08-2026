@@ -19,49 +19,47 @@ All use points share the same weights; only the thresholds differ.
 import numpy as np
 
 # ─── Sub-score functions (identical to scoring_service) ─────────────────────
+# Linear interpolation between standards-based anchors; np.interp clamps.
+
+PH_X = np.array([5.0, 5.5, 6.0, 6.5, 8.5, 9.0, 9.5, 10.0])
+PH_Y = np.array([0.0, 40.0, 70.0, 100.0, 100.0, 70.0, 40.0, 0.0])
+TURB_X = np.array([0.0, 1.0, 5.0, 10.0, 25.0, 50.0])
+TURB_Y = np.array([100.0, 100.0, 80.0, 55.0, 25.0, 0.0])
+TDS_X = np.array([0.0, 300.0, 500.0, 900.0, 1200.0, 1500.0])
+TDS_Y = np.array([100.0, 100.0, 80.0, 50.0, 20.0, 0.0])
+TEMP_X = np.array([5.0, 10.0, 15.0, 20.0, 30.0, 35.0, 40.0, 45.0])
+TEMP_Y = np.array([25.0, 50.0, 75.0, 100.0, 100.0, 75.0, 50.0, 25.0])
+
+
+def _interp(x, xs, ys) -> np.ndarray:
+    """Same arithmetic order as scoring_service._interp, vectorised."""
+    x = np.asarray(x, dtype=float)
+    i = np.clip(np.searchsorted(xs, x, side="right"), 1, len(xs) - 1)
+    x0, x1 = xs[i - 1], xs[i]
+    y0, y1 = ys[i - 1], ys[i]
+    out = y0 + (x - x0) * (y1 - y0) / (x1 - x0)
+    out = np.where(x <= xs[0], ys[0], out)
+    return np.where(x >= xs[-1], ys[-1], out)
+
 
 def ph_score(ph) -> np.ndarray:
-    """Ideal range 6.5–8.5. Outside → rapidly drops."""
-    ph = np.asarray(ph, dtype=float)
-    out = np.full_like(ph, 0.0)
-    out = np.where((6.5 <= ph) & (ph <= 8.5), 100.0, out)
-    out = np.where(((6.0 <= ph) & (ph < 6.5)) | ((8.5 < ph) & (ph <= 9.0)), 70.0, out)
-    out = np.where(((5.5 <= ph) & (ph < 6.0)) | ((9.0 < ph) & (ph <= 9.5)), 40.0, out)
-    return out
+    """Ideal 6.5–8.5 (100), drops linearly to 0 at pH 5.0 / 10.0."""
+    return _interp(ph, PH_X, PH_Y)
 
 
 def turbidity_score(ntu) -> np.ndarray:
-    """WHO guideline < 1 NTU for drinking; ≤ 5 NTU acceptable for domestic."""
-    ntu = np.asarray(ntu, dtype=float)
-    out = np.full_like(ntu, 0.0)
-    out = np.where(ntu <= 1.0, 100.0, out)
-    out = np.where((1.0 < ntu) & (ntu <= 5.0), 80.0, out)
-    out = np.where((5.0 < ntu) & (ntu <= 10.0), 55.0, out)
-    out = np.where((10.0 < ntu) & (ntu <= 25.0), 25.0, out)
-    return out
+    """Ideal ≤ 1 NTU (100), drops linearly to 0 at 50 NTU."""
+    return _interp(ntu, TURB_X, TURB_Y)
 
 
 def tds_score(ppm) -> np.ndarray:
-    """WHO guideline ≤ 500 ppm acceptable; ≤ 300 ppm good."""
-    ppm = np.asarray(ppm, dtype=float)
-    out = np.full_like(ppm, 0.0)
-    out = np.where(ppm <= 300.0, 100.0, out)
-    out = np.where((300.0 < ppm) & (ppm <= 500.0), 80.0, out)
-    out = np.where((500.0 < ppm) & (ppm <= 900.0), 50.0, out)
-    out = np.where((900.0 < ppm) & (ppm <= 1200.0), 20.0, out)
-    return out
+    """Ideal ≤ 300 ppm (100), drops linearly to 0 at 1500 ppm."""
+    return _interp(ppm, TDS_X, TDS_Y)
 
 
 def temperature_score(celsius) -> np.ndarray:
-    """Comfortable range 20–30 °C. High temp accelerates bacterial growth."""
-    celsius = np.asarray(celsius, dtype=float)
-    out = np.full_like(celsius, 25.0)
-    out = np.where((20.0 <= celsius) & (celsius <= 30.0), 100.0, out)
-    out = np.where((15.0 <= celsius) & (celsius < 20.0)
-                   | (30.0 < celsius) & (celsius <= 35.0), 75.0, out)
-    out = np.where((10.0 <= celsius) & (celsius < 15.0)
-                   | (35.0 < celsius) & (celsius <= 40.0), 50.0, out)
-    return out
+    """Ideal 20–30 °C (100), drops linearly to 25 at 5 °C / 45 °C."""
+    return _interp(celsius, TEMP_X, TEMP_Y)
 
 
 # ─── Weights & thresholds (identical to scoring_service) ─────────────────────
@@ -85,7 +83,7 @@ USE_POINT_THRESHOLDS: dict[str, float] = {
 }
 
 # Overall-quality threshold used by prediction_service for early warning / RUL.
-DEFAULT_SCORE_THRESHOLD = 60.0
+DEFAULT_SCORE_THRESHOLD = 80.0
 
 
 # ─── Scalar score mirror (identical to compute_scores) ───────────────────────

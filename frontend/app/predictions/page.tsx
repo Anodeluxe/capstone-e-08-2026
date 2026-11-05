@@ -42,7 +42,11 @@ export default function PredictionsPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
         <div className="md:col-span-1">
-          <ETACard prediction={latest} isLoading={isLoading} />
+          <ETACard
+            prediction={latest}
+            currentScore={dashboard?.latest_reading?.score_overall ?? null}
+            isLoading={isLoading}
+          />
         </div>
         <div className="md:col-span-2">
           <TrendChart
@@ -90,6 +94,10 @@ export default function PredictionsPage() {
                         <td className="px-3 py-2 sm:px-4 font-mono tabular-nums">
                           {p.days_until_threshold !== null ? (
                             p.days_until_threshold.toFixed(1)
+                          ) : p.rul_hours != null && p.rul_hours > 720 ? (
+                            <span className="text-xs text-muted-foreground font-sans font-medium">
+                              Skor air
+                            </span>
                           ) : (
                             <span className="text-xs text-amber-600 dark:text-amber-400 font-sans font-medium">
                               Kekurangan data

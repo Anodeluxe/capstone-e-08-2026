@@ -1,9 +1,9 @@
 """
-ML Feature Pipeline — v2 Horizon (early-warning 30 hari)
-═══════════════════════════════════════════════════════
+ML Feature Pipeline — v3 Lean A (early-warning sustained 24 jam)
+═══════════════════════════════════════════════════════════════
 
 Membangun matriks fitur produksi yang **identik dengan pelatihan** model
-`xgb_model_hourly_v2_horizon.pkl`.
+`xgb_model_v3.pkl` (17 fitur, history maksimum 72 jam).
 
 Kontrak penting:
   - FEATURE_COLUMNS di bawah harus SELALU cocok urutan/jumlahnya dengan
@@ -26,10 +26,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.sensor_reading import SensorReading
 
-# ── Lokasi artifact model (bundle v2-horizon) ─────────────────────────────────
+# ── Lokasi artifact model (bundle v3 Lean A) ─────────────────────────────────
 _ML_DIR = os.path.dirname(os.path.abspath(__file__))
 _MODELS_DIR = os.path.join(_ML_DIR, "models")
-_XGB_BUNDLE_PATH = os.path.join(_MODELS_DIR, "xgb_model_hourly_v2_horizon.pkl")
+_XGB_BUNDLE_PATH = os.path.join(_MODELS_DIR, "xgb_model_v3.pkl")
 
 # Daftar fitur TEPAT seperti metadata bundle (jangan ubah urutan!)
 FEATURE_COLUMNS = [
@@ -41,13 +41,8 @@ FEATURE_COLUMNS = [
     "score_overall",
     "score_drop_24",
     "score_drop_72",
-    "score_drop_168",
     "score_MA_24",
-    "score_MA_72",
     "score_STD_24",
-    "turbidity_raw_MA24",
-    "tds_raw_MA24",
-    "ph_raw_MA24",
     "turbidity_raw_drop24",
     "tds_raw_drop24",
     "ph_raw_drop24",
@@ -57,18 +52,18 @@ FEATURE_COLUMNS = [
     "hour_of_day",
 ]
 
-# Minimum baris hourly agar fitur drop/history bisa dihitung
-MIN_HOURLY_ROWS = 169
+# Minimum baris hourly agar fitur drop/history 72 jam bisa dihitung
+MIN_HOURLY_ROWS = 73
 
 # Ambang alarm produksi (sama dengan generator/target & EWS)
-SCORE_THRESHOLD = 60.0
+SCORE_THRESHOLD = 80.0
 
 # Rentang fisis sensor — nilai di luar ini di-clip, bukan untuk extrapolate
 _PHYSICAL_CLIP = {
     "ph_raw": (3.0, 11.0),
     "tds_raw": (10.0, 1800.0),
     "turbidity_raw": (0.05, 65.0),
-    "temperature_raw": (20.0, 34.0),
+    "temperature_raw": (5.0, 45.0),
 }
 
 
@@ -92,7 +87,7 @@ def load_model() -> dict | None:
         bundle_columns = _model_bundle.get("feature_columns")
         if bundle_columns is not None and bundle_columns != FEATURE_COLUMNS:
             raise ValueError("Model feature_columns do not match production FEATURE_COLUMNS")
-        print("[ML] Bundle model v2-horizon dimuat.")
+        print("[ML] Bundle model v3 Lean A dimuat.")
         return _model_bundle
     except Exception as exc:
         print(f"[ML] Gagal memuat bundle XGBoost: {exc}")
@@ -143,7 +138,7 @@ def build_feature_matrix(
     overall_scores: list[float] | None = None,
 ) -> pd.DataFrame | None:
     """
-    Dari data hourly (agregasi DB) → 22 fitur model.
+    Dari data hourly (agregasi DB) → 17 fitur model Lean A.
 
     Fitur rolling (MA/drop) dihitung pada slice (single cycle). Karena
     `elapsed_hours` di training adalah fraksi 0-1, nilai yang benar
@@ -190,18 +185,15 @@ def build_feature_matrix(
     # ── Fitur rolling / drop (rolling dihitung pada SATU cycle berjalan) ─────
     df["score_drop_24"] = df["score_overall"].diff(24).fillna(0.0)
     df["score_drop_72"] = df["score_overall"].diff(72).fillna(0.0)
-    df["score_drop_168"] = df["score_overall"].diff(168).fillna(0.0)
 
     df["score_MA_24"] = df["score_overall"].rolling(24, min_periods=1).mean()
-    df["score_MA_72"] = df["score_overall"].rolling(72, min_periods=1).mean()
     df["score_STD_24"] = df["score_overall"].rolling(24, min_periods=1).std().fillna(0.0)
 
     for col in ("turbidity", "tds", "ph"):
-        df[f"{col}_raw_MA24"] = df[col].rolling(24, min_periods=1).mean()
         df[f"{col}_raw_drop24"] = df[col].diff(24).fillna(0.0)
         df[f"{col}_raw_drop72"] = df[col].diff(72).fillna(0.0)
 
-    # Pastikan 22 kolom ada (guard); buang sisanya
+    # Pastikan 17 kolom ada (guard); buang sisanya
     for col in FEATURE_COLUMNS:
         if col not in df.columns:
             df[col] = 0.0
@@ -212,17 +204,22 @@ def build_feature_matrix(
 # ── Pipeline lengkap: DB → Features ──────────────────────────────────────────
 async def get_latest_features(
     db: AsyncSession,
-    lookback_hours: int = 169,
+    lookback_hours: int = 73,
     elapsed_fraction: float = 0.0,
     overall_scores: list[float] | None = None,
+    cycle_started_at: datetime | None = None,
 ) -> pd.DataFrame | None:
     """
-    Convenience: ambil 72 jam terakhir, agregasi hourly, build feature matrix,
-    lalu return BARIS TERAKHIR (jam terbaru) berbentuk DataFrame 1-baris.
+    Convenience: ambil 73 jam terakhir (maksimum sejak awal siklus),
+    agregasi hourly, build feature matrix, lalu return BARIS TERAKHIR
+    (jam terbaru) berbentuk DataFrame 1-baris.
 
     `overall_scores` → deret skor per jam sejajar dengan agregasi (dari caller).
+    `cycle_started_at` → jangan campur data siklus drain sebelumnya.
     """
     since = datetime.utcnow() - timedelta(hours=lookback_hours)
+    if cycle_started_at is not None and cycle_started_at > since:
+        since = cycle_started_at
     hourly_df = await aggregate_hourly_readings(db, since)
 
     if hourly_df.empty:
@@ -240,6 +237,6 @@ async def get_latest_features(
 # MAIN (untuk uji cepat fitur sendirian)
 # =============================================================================
 if __name__ == "__main__":
-    print("Fitur produksi v2-horizon (22 kolom):")
+    print("Fitur produksi v3 Lean A (17 kolom):")
     for n, col in enumerate(FEATURE_COLUMNS):
         print(f"  {n:2d}. {col}")

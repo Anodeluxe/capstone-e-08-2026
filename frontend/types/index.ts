@@ -61,6 +61,7 @@ export interface PredictionResult {
   predicted_date: string | null
   confidence: number | null
   model_used: string
+  rul_hours?: number | null
   notification_sent: boolean
 }
 

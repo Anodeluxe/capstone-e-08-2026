@@ -18,7 +18,9 @@ Also handles:
 
 import asyncio
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+
+from sqlalchemy import select
 
 from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal
@@ -116,12 +118,29 @@ async def handle_sensor_reading(raw_payload: str) -> None:
         if (
             active_drain is not None
             and active_drain.threshold_crossed_at is None
-            and scores.overall <= 60.0
+            and timestamp - active_drain.started_at >= timedelta(hours=24)
         ):
-            # Capture the first observed quality event for later RUL labeling.
-            active_drain.threshold_crossed_at = timestamp
-            active_drain.event_observed = True
-            active_drain.event_reason = "score_overall_lte_60"
+            # Event = score_overall bertahan <= 80 selama 24 jam (rolling mean),
+            # sama dengan definisi label training.
+            window_start = max(
+                timestamp - timedelta(hours=24), active_drain.started_at
+            )
+            recent_scores = (
+                await db.execute(
+                    select(SensorReading.score_overall).where(
+                        SensorReading.timestamp >= window_start,
+                        SensorReading.timestamp < timestamp,
+                        SensorReading.score_overall.isnot(None),
+                    )
+                )
+            ).scalars().all()
+            mean_score = (
+                sum(recent_scores) + scores.overall
+            ) / (len(recent_scores) + 1)
+            if mean_score <= 80.0:
+                active_drain.threshold_crossed_at = timestamp
+                active_drain.event_observed = True
+                active_drain.event_reason = "score_overall_ma24_lte_80"
 
         sensor_row = SensorReading(
             timestamp=timestamp,
