@@ -10,13 +10,6 @@ export const VALVE_LABELS: Record<ValveID, string> = {
   garden: 'Taman',
 }
 
-const CLOSE_THRESHOLDS: Record<ValveID, number> = {
-  bathroom: 80,
-  kitchen: 65,
-  laundry: 45,
-  garden: 25,
-}
-
 function scoreColor(score: number): { stroke: string; fill: string; labelClass: string } {
   if (score >= 75) return {
     stroke: '#10b981',
@@ -53,8 +46,6 @@ export default function SensorScoreCard({ valveId, score, isOpen }: Props) {
   const displayScore = score ?? 0
   const { stroke, fill, labelClass } = scoreColor(displayScore)
   const dashOffset = CIRCUMFERENCE - (displayScore / 100) * CIRCUMFERENCE
-  const threshold = CLOSE_THRESHOLDS[valveId]
-  const meetsThreshold = score !== null && score >= threshold
 
   return (
     <div
@@ -104,7 +95,7 @@ export default function SensorScoreCard({ valveId, score, isOpen }: Props) {
         <p className={cn('text-xs mt-0.5', score === null ? 'text-muted-foreground' : labelClass)}>
           {score === null
             ? 'Tidak ada data'
-            : meetsThreshold
+            : isOpen
               ? 'Memenuhi standar'
               : 'Di bawah batas'}
         </p>
