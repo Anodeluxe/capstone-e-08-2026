@@ -38,7 +38,6 @@ export default function SensorTable({ data, showSampleCount = false }: Props) {
               <th className="hidden md:table-cell px-4 py-3 font-medium">Turbiditas</th>
               <th className="hidden md:table-cell px-4 py-3 font-medium">TDS</th>
               <th className="hidden md:table-cell px-4 py-3 font-medium">Suhu</th>
-              <th className="hidden lg:table-cell px-4 py-3 font-medium">Level Air</th>
               {showSampleCount && <th className="hidden md:table-cell px-4 py-3 font-medium">Sampel</th>}
               <th className="px-3 py-3 sm:px-4 font-medium">Skor</th>
               <th className="px-3 py-3 sm:px-4 font-medium">Status</th>
@@ -65,7 +64,6 @@ export default function SensorTable({ data, showSampleCount = false }: Props) {
                 <td className="hidden md:table-cell px-4 py-2 font-mono tabular-nums">{row.turbidity.toFixed(1)} NTU</td>
                 <td className="hidden md:table-cell px-4 py-2 font-mono tabular-nums">{row.tds.toFixed(0)} ppm</td>
                 <td className="hidden md:table-cell px-4 py-2 font-mono tabular-nums">{row.temperature.toFixed(1)} °C</td>
-                <td className="hidden lg:table-cell px-4 py-2 font-mono tabular-nums">{row.water_level.toFixed(1)}%</td>
                 {showSampleCount && (
                   <td className="hidden md:table-cell px-4 py-2 font-mono tabular-nums text-muted-foreground">
                     {'sample_count' in row ? row.sample_count : '—'}
