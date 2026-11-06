@@ -88,6 +88,30 @@ async def test_manual_close_stays_closed_when_score_recovers(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_manual_open_is_not_auto_closed(monkeypatch):
+    valve = _valve("bathroom", is_open=True, last_changed_by="user:operator_local")
+    db = AsyncMock()
+
+    async def fake_get_valve_state(_db, valve_id):
+        return valve if valve_id == "bathroom" else None
+
+    async def fake_execute(_db, valve_id, action, triggered_by, **_kwargs):
+        valve.is_open = action == "open"
+        valve.last_changed_by = triggered_by
+        return valve
+
+    monkeypatch.setattr(valve_service, "get_valve_state", fake_get_valve_state)
+    monkeypatch.setattr(valve_service, "execute_valve_command", fake_execute)
+
+    changed = await valve_service.process_auto_valve_decisions(
+        db, valves_to_close=["bathroom"], current_score=10.0
+    )
+
+    assert valve.is_open is True
+    assert changed == []
+
+
+@pytest.mark.asyncio
 async def test_valve_ack_keeps_command_origin(monkeypatch):
     valve = _valve("garden", is_open=True, last_changed_by="system")
 

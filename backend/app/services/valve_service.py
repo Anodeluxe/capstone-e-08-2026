@@ -116,7 +116,14 @@ async def process_auto_valve_decisions(
 
     for valve_id in valves_to_close:
         valve = await get_valve_state(db, valve_id)
-        if valve and valve.is_open:
+        if (
+            valve
+            and valve.is_open
+            and not (valve.last_changed_by or "").startswith("user:")
+        ):
+            # A manual open wins over automatic close until the user changes
+            # it again; otherwise the valve would reopen and instantly snap
+            # shut on the next sensor reading.
             await execute_valve_command(
                 db, valve_id, "close", "system",
                 score_at_command=current_score,

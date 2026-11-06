@@ -58,7 +58,9 @@ def _mirror(payload: ESP32SensorPayload) -> dict:
         )
     overall = round(sum(per_point.values()) / len(per_point), 2)
 
-    valves = valves_to_close(payload.ph, payload.turbidity, payload.tds)
+    valves = valves_to_close(
+        payload.ph, payload.turbidity, payload.tds, payload.temperature
+    )
 
     return {"overall": overall, "bathroom": per_point["bathroom"],
             "kitchen": per_point["kitchen"], "laundry": per_point["laundry"],
