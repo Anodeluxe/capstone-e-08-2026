@@ -11,10 +11,10 @@ export const VALVE_LABELS: Record<ValveID, string> = {
 }
 
 const CLOSE_THRESHOLDS: Record<ValveID, number> = {
-  bathroom: 60,
+  bathroom: 80,
   kitchen: 65,
   laundry: 45,
-  garden: 30,
+  garden: 25,
 }
 
 function scoreColor(score: number): { stroke: string; fill: string; labelClass: string } {
