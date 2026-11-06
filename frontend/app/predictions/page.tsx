@@ -8,7 +8,8 @@ import TrendChart from '@/components/predictions/TrendChart'
 import { Button } from '@/components/ui/button'
 import { format } from 'date-fns'
 import { id as idLocale } from 'date-fns/locale'
-import { isStatisticalModel, toUtcDate } from '@/lib/utils'
+import { toUtcDate } from '@/lib/utils'
+// import { isStatisticalModel } from '@/lib/utils' // Dipakai kembali jika kolom Kepercayaan diaktifkan.
 
 export default function PredictionsPage() {
   const { data: predictions, isLoading, refetch } = useLatestPredictions()
@@ -72,14 +73,16 @@ export default function PredictionsPage() {
                     <th className="px-3 py-3 sm:px-4 font-medium">Dihitung Pada</th>
                     <th className="px-3 py-3 sm:px-4 font-medium">Sisa Waktu</th>
                     <th className="hidden sm:table-cell px-4 py-3 font-medium">Perkiraan Tanggal</th>
+                    {/* Kolom Kepercayaan dinonaktifkan sementara.
                     <th className="hidden md:table-cell px-4 py-3 font-medium">Kepercayaan</th>
+                    */}
                     <th className="hidden md:table-cell px-4 py-3 font-medium">Model</th>
                     <th className="hidden lg:table-cell px-4 py-3 font-medium">Notifikasi</th>
                   </tr>
                 </thead>
                 <tbody>
                   {(predictions ?? []).slice(0, 20).map((p) => {
-                    const isStat = isStatisticalModel(p.model_used)
+                    // const isStat = isStatisticalModel(p.model_used)
                     return (
                       <tr
                         key={p.id}
@@ -112,9 +115,11 @@ export default function PredictionsPage() {
                               })()
                             : '—'}
                         </td>
+                        {/* Kolom Kepercayaan dinonaktifkan sementara.
                         <td className="hidden md:table-cell px-4 py-2 font-mono tabular-nums">
                           {!isStat && p.confidence !== null ? `${(p.confidence * 100).toFixed(0)}%` : '—'}
                         </td>
+                        */}
                         <td className="hidden md:table-cell px-4 py-2 text-muted-foreground font-mono">{p.model_used}</td>
                         <td className="hidden lg:table-cell px-4 py-2">
                           <span
