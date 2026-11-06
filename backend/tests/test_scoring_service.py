@@ -9,7 +9,6 @@ import pytest
 
 from app.schemas.sensor import ESP32SensorPayload
 from app.services.scoring_service import (
-    USE_POINT_THRESHOLDS,
     ScoringResult,
     _ph_score,
     _tds_score,
@@ -165,14 +164,23 @@ class TestComputeScores:
         assert 0.0 <= result.tds_score <= 100.0
         assert 0.0 <= result.temperature_score <= 100.0
 
-    def test_valve_threshold_bathroom_stricter_than_garden(self):
-        assert USE_POINT_THRESHOLDS.bathroom > USE_POINT_THRESHOLDS.garden
-
-    def test_borderline_reading_selective_close(self, borderline_reading):
-        """Strict valves (bathroom/kitchen) may close while garden stays open."""
+    def test_class_b_closes_kitchen_only(self, borderline_reading):
+        """Firmware class B: bathroom/laundry/garden open, kitchen closed."""
         result = compute_scores(borderline_reading)
-        # Garden threshold is very low (25), so it should stay open
-        assert "garden" not in result.valves_to_close
+        assert result.valves_to_close == ["kitchen"]
+
+    @pytest.mark.parametrize("ph,turbidity,tds,expected", [
+        (7.2, 0.5, 180.0, []),
+        (6.2, 2.0, 350.0, ["kitchen"]),
+        (9.2, 12.0, 750.0, ["bathroom", "kitchen", "laundry"]),
+        (4.0, 30.0, 1200.0, ["bathroom", "kitchen", "laundry", "garden"]),
+    ])
+    def test_valves_follow_firmware_class(self, ph, turbidity, tds, expected):
+        reading = ESP32SensorPayload(
+            ph=ph, turbidity=turbidity, tds=tds,
+            temperature=28.0, water_level=50.0,
+        )
+        assert compute_scores(reading).valves_to_close == expected
 
     def test_overall_is_average_of_use_points(self, good_reading):
         result = compute_scores(good_reading)

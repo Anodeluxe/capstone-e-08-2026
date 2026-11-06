@@ -126,8 +126,13 @@ async def process_auto_valve_decisions(
 
     for valve_id in valves_to_open:
         valve = await get_valve_state(db, valve_id)
-        if valve and not valve.is_open and valve.last_changed_by == "system":
-            # Only auto-reopen if system closed it (not manual override)
+        if (
+            valve
+            and not valve.is_open
+            and not (valve.last_changed_by or "").startswith("user:")
+        ):
+            # Open automatically when the score is at/above this point's
+            # threshold, unless a user closed it manually.
             await execute_valve_command(
                 db, valve_id, "open", "system",
                 score_at_command=current_score,

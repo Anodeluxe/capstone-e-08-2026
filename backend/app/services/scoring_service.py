@@ -5,16 +5,15 @@ Computes a 0–100 quality score for each use point (bathroom, kitchen,
 laundry, garden) based on the multi-parameter weighted scoring approach
 described in the project proposal.
 
-Each use point uses the same parameter weights; only the acceptance
-threshold differs:
-  - Bathroom → strictest (valve closes below 80)
-  - Kitchen  → 65
-  - Laundry  → 45
-  - Garden   → most lenient (25)
+Valve decisions follow the firmware class rule (LIM_A/B/C + VALVE_RULE)
+so the cloud and the ESP32 close/open the same valves:
+  - A → all valves open
+  - B → bathroom, laundry, garden open; kitchen closed
+  - C → garden only
+  - D → all closed
 
-Because the weights are shared, every use point gets the same score, so
-`overall` equals each per-point score and the valve decisions are nested
-(bathroom closes first, garden last).
+Scores still use the same weights for every use point, so `overall`
+equals each per-point score; the score is now informational only.
 """
 
 from bisect import bisect_right
@@ -74,21 +73,30 @@ def _temperature_score(celsius: float) -> float:
     return _interp(celsius, _TEMP_X, _TEMP_Y)
 
 
-@dataclass
-class UsePointThresholds:
-    """
-    Defines the minimum acceptable overall score per use point
-    before its valve is automatically closed.
-    """
-    bathroom: float = 80.0
-    kitchen: float = 65.0
-    laundry: float = 45.0
-    garden: float = 25.0
-
-
-USE_POINT_THRESHOLDS = UsePointThresholds()
-
 USE_POINTS = ("bathroom", "kitchen", "laundry", "garden")
+
+# Same limits as esp32_waterq_cloud_mqtt.txt: (ph_min, ph_max, ntu_max, tds_max)
+_LIMITS = {
+    "A": (6.5, 8.5, 3.0, 300.0),
+    "B": (6.0, 9.0, 25.0, 1000.0),
+    "C": (5.0, 10.0, 100.0, 2000.0),
+}
+
+# Same VALVE_RULE order as the firmware: bathroom, kitchen, laundry, garden.
+_VALVE_RULE = {
+    "A": (True, True, True, True),
+    "B": (True, False, True, True),
+    "C": (False, False, False, True),
+    "D": (False, False, False, False),
+}
+
+
+def _firmware_class(ph: float, turbidity: float, tds: float) -> str:
+    """Classify water exactly like the firmware (temperature is ignored)."""
+    for cls, (ph_min, ph_max, ntu_max, tds_max) in _LIMITS.items():
+        if ph_min <= ph <= ph_max and turbidity <= ntu_max and tds <= tds_max:
+            return cls
+    return "D"
 
 
 def _weighted_score(
@@ -141,17 +149,13 @@ def compute_scores(reading: ESP32SensorPayload) -> ScoringResult:
         sum(scores.values()) / len(scores), 2
     )
 
-    # Determine which valves should auto-close
-    thresholds = USE_POINT_THRESHOLDS
-    valves_to_close = []
-    if scores["bathroom"] < thresholds.bathroom:
-        valves_to_close.append("bathroom")
-    if scores["kitchen"] < thresholds.kitchen:
-        valves_to_close.append("kitchen")
-    if scores["laundry"] < thresholds.laundry:
-        valves_to_close.append("laundry")
-    if scores["garden"] < thresholds.garden:
-        valves_to_close.append("garden")
+    # Determine which valves should auto-close using the firmware class rule
+    water_class = _firmware_class(reading.ph, reading.turbidity, reading.tds)
+    valves_to_close = [
+        point
+        for point, allowed in zip(USE_POINTS, _VALVE_RULE[water_class])
+        if not allowed
+    ]
 
     return ScoringResult(
         overall=overall,

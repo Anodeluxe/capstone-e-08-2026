@@ -7,13 +7,14 @@ standalone (Kaggle) training scripts can compute quality scores
 without pulling in the FastAPI / config stack.
 
 ⚠️  KEEP IN SYNC: any change to ``scoring_service.py`` (sub-score
-functions, weights, valve thresholds) must be mirrored here, and vice
+functions, weights, firmware valve rules) must be mirrored here, and vice
 versa. ``tests/test_scoring_consistency.py`` verifies both produce
 identical results.
 
 Bathroom weights below match the `.env` defaults:
 WEIGHT_PH=0.306, WEIGHT_TURBIDITY=0.222, WEIGHT_TDS=0.194, WEIGHT_TEMPERATURE=0.278
-All use points share the same weights; only the thresholds differ.
+All use points share the same weights; valve decisions use the firmware
+class rule (LIM_A/B/C + VALVE_RULE), not the score.
 """
 
 import numpy as np
@@ -74,13 +75,46 @@ USE_POINT_WEIGHTS: dict[str, dict[str, float]] = {
     for point in ("bathroom", "kitchen", "laundry", "garden")
 }
 
-# Minimum acceptable overall score per use point before auto-close.
-USE_POINT_THRESHOLDS: dict[str, float] = {
-    "bathroom": 80.0,
-    "kitchen": 65.0,
-    "laundry": 45.0,
-    "garden": 25.0,
+# Same limits as esp32_waterq_cloud_mqtt.txt: (ph_min, ph_max, ntu_max, tds_max)
+FIRMWARE_LIMITS: dict[str, tuple[float, float, float, float]] = {
+    "A": (6.5, 8.5, 3.0, 300.0),
+    "B": (6.0, 9.0, 25.0, 1000.0),
+    "C": (5.0, 10.0, 100.0, 2000.0),
 }
+
+# Same VALVE_RULE order as the firmware: bathroom, kitchen, laundry, garden.
+VALVE_RULE: dict[str, tuple[bool, bool, bool, bool]] = {
+    "A": (True, True, True, True),
+    "B": (True, False, True, True),
+    "C": (False, False, False, True),
+    "D": (False, False, False, False),
+}
+
+USE_POINTS = ("bathroom", "kitchen", "laundry", "garden")
+
+
+def firmware_class(ph, turbidity, tds):
+    """Classify water exactly like the firmware (temperature is ignored)."""
+    ph = np.asarray(ph, dtype=float)
+    turbidity = np.asarray(turbidity, dtype=float)
+    tds = np.asarray(tds, dtype=float)
+    out = np.full(np.broadcast(ph, turbidity, tds).shape, "D", dtype="<U1")
+    unset = np.ones(out.shape, dtype=bool)
+    for cls, (ph_min, ph_max, ntu_max, tds_max) in FIRMWARE_LIMITS.items():
+        hit = (
+            unset
+            & (ph >= ph_min) & (ph <= ph_max)
+            & (turbidity <= ntu_max) & (tds <= tds_max)
+        )
+        out[hit] = cls
+        unset &= ~hit
+    return out
+
+
+def valves_to_close(ph, turbidity, tds) -> list[str]:
+    """Firmware VALVE_RULE → valve IDs that must be closed for this reading."""
+    cls = str(firmware_class(ph, turbidity, tds))
+    return [p for p, allowed in zip(USE_POINTS, VALVE_RULE[cls]) if not allowed]
 
 # Overall-quality threshold used by prediction_service for early warning / RUL.
 DEFAULT_SCORE_THRESHOLD = 80.0
@@ -113,11 +147,7 @@ def score_reading(ph: float, tds: float, turbidity: float, temperature: float) -
 
     overall = round(float(np.mean(list(scores.values()))), 2)
 
-    valves = [
-        point
-        for point, thr in USE_POINT_THRESHOLDS.items()
-        if scores[point] < thr
-    ]
+    valves = valves_to_close(ph, turbidity, tds)
 
     return {
         "overall": overall,
@@ -157,11 +187,3 @@ def overall_scores(ph, tds, turbidity, temperature) -> np.ndarray:
         for point, w in USE_POINT_WEIGHTS.items()
     }
     return np.round(np.mean(list(point_scores.values()), axis=0), 2)
-
-
-def valves_to_close_from_scores(scores) -> list[str]:
-    """Helper mirror of the per-use-point auto-close rule."""
-    return [
-        point for point, thr in USE_POINT_THRESHOLDS.items()
-        if scores[point] < thr
-    ]

@@ -31,12 +31,12 @@ sys.path.insert(0, str(ML_DIR))
 # scoring_service memakai nilai yang sama (MAKA konsisten).
 from scoring_model import (  # noqa: E402
     DEFAULT_SCORE_THRESHOLD,
-    USE_POINT_THRESHOLDS,
     USE_POINT_WEIGHTS,
     ph_score,
     tds_score,
     turbidity_score,
     temperature_score,
+    valves_to_close,
 )
 
 RESULT_KEYS = ("overall", "bathroom", "kitchen", "laundry", "garden",
@@ -58,7 +58,7 @@ def _mirror(payload: ESP32SensorPayload) -> dict:
         )
     overall = round(sum(per_point.values()) / len(per_point), 2)
 
-    valves = [p for p, thr in USE_POINT_THRESHOLDS.items() if per_point[p] < thr]
+    valves = valves_to_close(payload.ph, payload.turbidity, payload.tds)
 
     return {"overall": overall, "bathroom": per_point["bathroom"],
             "kitchen": per_point["kitchen"], "laundry": per_point["laundry"],
