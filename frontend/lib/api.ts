@@ -60,6 +60,9 @@ export const valvesApi = {
   command: (valveId: ValveID, payload: ValveCommandPayload) =>
     api.post<ValveState>(`/valves/${valveId}/command`, payload).then((r) => r.data),
 
+  resumeAuto: () =>
+    api.post<ValveState[]>('/valves/auto').then((r) => r.data),
+
   overrides: (valveId: ValveID) =>
     api
       .get<ValveOverrideLog[]>(`/valves/${valveId}/overrides`)

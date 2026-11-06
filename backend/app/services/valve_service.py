@@ -150,6 +150,23 @@ async def process_auto_valve_decisions(
     return changed
 
 
+async def resume_auto_mode(
+    db: AsyncSession,
+    current_score: float,
+    valves_to_close: list[str],
+    mqtt_client=None,
+) -> list[str]:
+    """Clear manual overrides so the next auto decision owns every valve."""
+    result = await db.execute(select(ValveState))
+    for valve in result.scalars().all():
+        valve.last_changed_by = "system"
+    await db.commit()
+
+    return await process_auto_valve_decisions(
+        db, valves_to_close, current_score, mqtt_client
+    )
+
+
 async def get_override_log(
     db: AsyncSession,
     valve_id: str | None = None,

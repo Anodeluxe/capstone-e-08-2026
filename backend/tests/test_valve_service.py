@@ -112,6 +112,44 @@ async def test_manual_open_is_not_auto_closed(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_resume_auto_clears_manual_overrides(monkeypatch):
+    valves = [
+        _valve("bathroom", True, "user:operator_local"),
+        _valve("garden", False, "user:operator_local"),
+    ]
+
+    class FakeResult:
+        def scalars(self):
+            return self
+
+        def all(self):
+            return valves
+
+    class FakeSession:
+        async def execute(self, _query):
+            return FakeResult()
+
+        async def commit(self):
+            pass
+
+    async def fake_process(_db, valves_to_close, current_score, mqtt_client=None):
+        assert valves_to_close == ["garden"]
+        assert current_score == 10.0
+        return ["garden"]
+
+    monkeypatch.setattr(
+        valve_service, "process_auto_valve_decisions", fake_process
+    )
+
+    changed = await valve_service.resume_auto_mode(
+        FakeSession(), 10.0, ["garden"]
+    )
+
+    assert [v.last_changed_by for v in valves] == ["system", "system"]
+    assert changed == ["garden"]
+
+
+@pytest.mark.asyncio
 async def test_valve_ack_keeps_command_origin(monkeypatch):
     valve = _valve("garden", is_open=True, last_changed_by="system")
 

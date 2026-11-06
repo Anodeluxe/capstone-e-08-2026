@@ -1,9 +1,11 @@
 'use client'
 
 import { useValveList, useValveOverrides } from '@/hooks/useSensorData'
+import { useResumeAuto } from '@/hooks/useValveControl'
 import { useWSStore } from '@/hooks/useSensorWebSocket'
 import ValveCard from '@/components/valves/ValveCard'
 import { Button } from '@/components/ui/button'
+import { RotateCcw } from 'lucide-react'
 import { format } from 'date-fns'
 import { id as idLocale } from 'date-fns/locale'
 import { cn, toUtcDate } from '@/lib/utils'
@@ -12,6 +14,7 @@ export default function ValvesPage() {
   const { data: valves, isLoading, isError, refetch } = useValveList()
   const { data: overrides } = useValveOverrides()
   const liveValveStates = useWSStore((s) => s.valveStates)
+  const { mutate: resumeAuto, isPending: isResumingAuto } = useResumeAuto()
 
   const mergedValves = (valves ?? []).map((valve) => {
     const live = liveValveStates[valve.id]
@@ -22,9 +25,21 @@ export default function ValvesPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-xl font-semibold tracking-tight">Kontrol Katup</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">Kelola status buka/tutup katup solenoid secara manual</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">Kontrol Katup</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">Kelola status buka/tutup katup solenoid secara manual</p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-2"
+          onClick={() => resumeAuto()}
+          disabled={isResumingAuto}
+        >
+          <RotateCcw className="size-4" />
+          {isResumingAuto ? 'Mengaktifkan...' : 'Kembali ke Otomatis'}
+        </Button>
       </div>
 
       {isError ? (

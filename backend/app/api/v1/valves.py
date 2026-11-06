@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from typing import Optional
@@ -7,13 +8,17 @@ from app.core.auth import verify_api_key
 from app.core.database import get_db
 from app.core.security import UserOut, get_current_user_optional
 from app.core.websocket_manager import ws_manager
+from app.models.sensor_reading import SensorReading
 from app.mqtt.client import mqtt_client
+from app.schemas.sensor import ESP32SensorPayload
 from app.schemas.valve import ValveCommandRequest, ValveOverrideLogOut, ValveStateOut
+from app.services.scoring_service import compute_scores
 from app.services.valve_service import (
     execute_valve_command,
     get_all_valve_states,
     get_override_log,
     get_valve_state,
+    resume_auto_mode,
 )
 
 router = APIRouter(prefix="/valves", tags=["Valves"])
@@ -24,6 +29,45 @@ VALID_VALVE_IDS = {"bathroom", "kitchen", "laundry", "garden"}
 @router.get("/", response_model=list[ValveStateOut])
 async def get_valves(db: AsyncSession = Depends(get_db)):
     """Return current state of all 4 valves."""
+    return await get_all_valve_states(db)
+
+
+@router.post("/auto", response_model=list[ValveStateOut])
+async def resume_auto_control(
+    db: AsyncSession = Depends(get_db),
+    api_key: str = Depends(verify_api_key),
+):
+    """Return every valve to automatic control using the latest reading."""
+    latest = (
+        await db.execute(
+            select(SensorReading).order_by(SensorReading.timestamp.desc()).limit(1)
+        )
+    ).scalar_one_or_none()
+
+    if latest is None:
+        changed = await resume_auto_mode(db, 100.0, [], mqtt_client)
+        valves_to_close: list[str] = []
+    else:
+        scores = compute_scores(ESP32SensorPayload(
+            device_id="latest",
+            ph=latest.ph,
+            turbidity=latest.turbidity,
+            tds=latest.tds,
+            temperature=latest.temperature,
+            water_level=latest.water_level,
+        ))
+        valves_to_close = scores.valves_to_close
+        changed = await resume_auto_mode(
+            db, scores.overall, valves_to_close, mqtt_client
+        )
+
+    for valve_id in changed:
+        await ws_manager.broadcast_valve_status(
+            valve_id=valve_id,
+            is_open=valve_id not in valves_to_close,
+            triggered_by="system",
+        )
+
     return await get_all_valve_states(db)
 
 

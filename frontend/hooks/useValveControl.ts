@@ -4,6 +4,18 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { valvesApi } from '@/lib/api'
 import type { ValveID, ValveCommandPayload } from '@/types'
 
+export function useResumeAuto() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: () => valvesApi.resumeAuto(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['valves'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard', 'summary'] })
+    },
+  })
+}
+
 export function useValveCommand() {
   const queryClient = useQueryClient()
 
