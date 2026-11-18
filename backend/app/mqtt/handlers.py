@@ -247,7 +247,8 @@ async def handle_valve_ack(raw_payload: str) -> None:
         valve = await get_valve_state(db, ack.valve_id)
         if valve:
             valve.is_open = ack.is_open
-            valve.last_changed_by = "esp32_ack"
+            # Keep the command origin (system/user) so auto-reopen logic still
+            # knows whether a closed valve was closed automatically or manually.
             await db.commit()
 
     await ws_manager.broadcast_valve_status(

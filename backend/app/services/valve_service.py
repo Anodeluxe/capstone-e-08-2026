@@ -116,7 +116,14 @@ async def process_auto_valve_decisions(
 
     for valve_id in valves_to_close:
         valve = await get_valve_state(db, valve_id)
-        if valve and valve.is_open:
+        if (
+            valve
+            and valve.is_open
+            and not (valve.last_changed_by or "").startswith("user:")
+        ):
+            # A manual open wins over automatic close until the user changes
+            # it again; otherwise the valve would reopen and instantly snap
+            # shut on the next sensor reading.
             await execute_valve_command(
                 db, valve_id, "close", "system",
                 score_at_command=current_score,
@@ -126,8 +133,13 @@ async def process_auto_valve_decisions(
 
     for valve_id in valves_to_open:
         valve = await get_valve_state(db, valve_id)
-        if valve and not valve.is_open and valve.last_changed_by == "system":
-            # Only auto-reopen if system closed it (not manual override)
+        if (
+            valve
+            and not valve.is_open
+            and not (valve.last_changed_by or "").startswith("user:")
+        ):
+            # Open automatically when the score is at/above this point's
+            # threshold, unless a user closed it manually.
             await execute_valve_command(
                 db, valve_id, "open", "system",
                 score_at_command=current_score,
@@ -136,6 +148,23 @@ async def process_auto_valve_decisions(
             changed.append(valve_id)
 
     return changed
+
+
+async def resume_auto_mode(
+    db: AsyncSession,
+    current_score: float,
+    valves_to_close: list[str],
+    mqtt_client=None,
+) -> list[str]:
+    """Clear manual overrides so the next auto decision owns every valve."""
+    result = await db.execute(select(ValveState))
+    for valve in result.scalars().all():
+        valve.last_changed_by = "system"
+    await db.commit()
+
+    return await process_auto_valve_decisions(
+        db, valves_to_close, current_score, mqtt_client
+    )
 
 
 async def get_override_log(
