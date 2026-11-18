@@ -92,7 +92,7 @@ async def run_test(db_name: str, lookback_hours: int = 73):
         timestamps = [r[0] for r in recent_rows]
         scores = [r[1] for r in recent_rows]
 
-        print(f"\nRunning ML Hybrid Inference (lookback: {lookback_hours}h, inputs: {len(scores)} data points)...")
+        print(f"\nRunning XGBoost Inference (lookback: {lookback_hours}h, inputs: {len(scores)} data points)...")
         prediction = await predict_hybrid(
             session,
             timestamps=timestamps,
@@ -120,10 +120,10 @@ async def run_test(db_name: str, lookback_hours: int = 73):
         conf_pct = f"{conf * 100:.1f}%" if conf is not None else "N/A"
 
         print(f"• Model Terpilih      : {model_name}")
-        if model_name == "xgb_v3_lean_30d":
+        if not prediction.get("status"):
             print(f"  Status              : ✅ SUCCESS (XGBoost Active, syarat >= 73h terpenuhi)")
         else:
-            print(f"  Status              : ⚠️ FALLBACK ({model_name})")
+            print(f"  Status              : {prediction['message']}")
 
         print(f"• Estimasi Sisa Waktu : {days:.2f} hari ({rul_h:.1f} jam)" if days is not None else "• Estimasi Sisa Waktu : — hari")
         print(f"• Perkiraan Tanggal   : {pred_date.strftime('%d %B %Y %H:%M') if pred_date else '—'}")

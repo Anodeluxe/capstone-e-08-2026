@@ -10,15 +10,12 @@ Keputusan desain:
 1. Model XGBoost `xgb_model_v3` → RUL penuh sampai event sustained
    (rolling mean 24 jam `score_overall <= 80`). RUL ditampilkan hanya bila
    <= 30 hari; di atas itu dashboard menampilkan skor air saja.
-2. Bila memori fitur belum cukup (jam < MIN_HOURLY_ROWS=73) ATAU
-   `score_overall` tidak tersedia, kita FALLBACK ke regresi ETA lama
-   (predict_eta) — model linear/polynomial yang sudah dipakai
-   predictions.py & scheduler.
+2. Bila memori fitur belum cukup (jam < MIN_HOURLY_ROWS=73), prediksi
+   tidak dibuat sampai histori mencukupi.
 3. `elapsed_fraction` diambil dari `DrainLog` via `MLConfig` (DB-backed).
    Model dilatih dengan `elapsed_hours` = fraksi siklus [0, 1].
 
-Service ini TIDAK menyentuh jalur lama — hanya menambah jalur prioritas-ML
-di depan `predict_eta`.
+Prediksi produksi hanya menggunakan XGBoost, tanpa fallback regresi.
 """
 
 from datetime import datetime, timedelta
@@ -46,9 +43,6 @@ SCORE_LOOKS_DEGRADING = 80.0
 
 # Batas tampil RUL di UI (30 hari). Model sendiri tidak di-cap ke sini.
 RUL_CAP_HOURS = 720.0
-
-# Kalau model tidak bisa dipakai → fallback ke regresi lama
-MODEL_FALLBACK = "linear_or_poly_regression"
 
 # Ambang untuk memberi tahu "sehari lagi" di dashboard (hari, bukan jam)
 DAYS_CAP = 30.0
@@ -85,12 +79,11 @@ async def predict_rul_ml(
     lookback_hours: int = 73,
     elapsed_fraction: float | None = None,
     overall_scores: list[float] | None = None,
-) -> dict[str, Any] | None:
+) -> dict[str, Any]:
     """
     Path PREFERRED (produksi): XGBoost → RUL tanpa cap (clipped di 2880 jam).
 
-    Mengembalikan dict hasil, atau `None` bila data/model belum siap
-    (caller harus fallback ke predict_eta).
+    Mengembalikan dict hasil atau status data/model belum siap.
 
     `elapsed_fraction` → fraksi siklus [0.0, 1.0] dari `MLConfig` (DB-backed).
     Bila `None`, akan diambil otomatis dari `DrainLog` via `MLConfig`.
@@ -101,8 +94,7 @@ async def predict_rul_ml(
     """
     bundle = load_xgb_bundle()
     if bundle is None:
-        print("[ML] Bundle XGBoost tidak tersedia → fallback regresi.")
-        return None
+        return _not_ready_result("model_unavailable", "Model XGBoost tidak tersedia.")
 
     # Get elapsed fraction from DB-backed config if not provided
     if elapsed_fraction is None:
@@ -120,7 +112,9 @@ async def predict_rul_ml(
         cycle_started_at=cycle_started_at,
     )
     if features_df is None or features_df.empty:
-        return None
+        return _not_ready_result(
+            "insufficient_history", "Data historis belum cukup. Diperlukan minimal 73 titik data per jam untuk histori 72 jam."
+        )
 
     model = bundle["model"]
     # The trainer stores metadata at the bundle root, not under `metadata`.
@@ -130,7 +124,7 @@ async def predict_rul_ml(
     rul_raw = float(model.predict(X)[0])
     max_hours = float(metadata.get("target_cap_hours", 2880.0))
     if not np.isfinite(rul_raw):
-        return None
+        return _not_ready_result("model_unavailable", "Model XGBoost menghasilkan prediksi tidak valid.")
 
     rul_hours = max(0.0, min(rul_raw, max_hours))
     metrics = metadata.get("metrics", {})
@@ -201,20 +195,6 @@ async def get_latest_features_async(
     )
 
 
-def _regression_fallback(
-    timestamps: list[datetime],
-    scores: list[float],
-    threshold: float,
-) -> dict[str, Any]:
-    """
-    Jembatan ke predict_eta lama supaya ML service TIDAK mengganti jalur
-    yang dipakai scheduler/predictions — hanya menambah jalur prioritas.
-    """
-    from app.services.prediction_service import predict_eta
-
-    return predict_eta(timestamps, scores, threshold=threshold)
-
-
 async def predict_hybrid(
     db: AsyncSession,
     timestamps: list[datetime],
@@ -225,33 +205,25 @@ async def predict_hybrid(
     mode: str = "auto",
 ) -> dict[str, Any]:
     """
-    Jalur HYBRID yang dipanggil scheduler & predictions:
+    Jalur XGBoost yang dipanggil scheduler & predictions:
       1. Coba ML XGBoost (bila data & model siap).
       2. Bila hasil ML "within 30d" (RUL <= 30 hari) → pakai hasil ML.
       3. Bila ML ada tapi RUL > 30 hari → tampilkan skor air saja
          (`display_hint="score_only"`), BUKAN angka RUL.
-      4. Bila ML belum siap → fallback regresi ETA lama.
+      4. Bila ML belum siap → kembalikan status data/model belum siap.
 
-    Return selalu dict (tidak pernah None); ada key `model_used` untuk
-    memberi tahu dashboard jalur mana yang dipakai.
+    Return selalu dict; status menjelaskan bila model/data belum siap.
     """
     # Get elapsed fraction from DB-backed config if not provided
     if elapsed_fraction is None:
         elapsed_fraction = await get_elapsed_fraction(db)
 
-    if mode not in {"auto", "ml", "linear"}:
-        raise ValueError("mode must be one of: auto, ml, linear")
+    if mode not in {"auto", "ml"}:
+        raise ValueError("mode must be one of: auto, ml")
 
     settings = get_settings()
-    if mode == "linear" or (
-        mode == "auto" and (not settings.ml_enabled or settings.ml_active_model != "xgboost")
-    ):
-        fallback = dict(_regression_fallback(timestamps, scores, threshold))
-        fallback["model_used"] = fallback.get("model_used", MODEL_FALLBACK)
-        fallback["display_hint"] = "regression_eta"
-        fallback["within_30d_window"] = None
-        fallback["is_early_warning_active"] = False
-        return fallback
+    if not settings.ml_enabled or settings.ml_active_model != "xgboost":
+        return _not_ready_result("model_unavailable", "Model XGBoost tidak tersedia.")
 
     ml_result = await predict_rul_ml(
         db,
@@ -260,7 +232,10 @@ async def predict_hybrid(
         overall_scores=overall_scores,
     )
 
-    if ml_result is not None and ml_result.get("within_30d_window"):
+    if ml_result.get("status"):
+        return ml_result
+
+    if ml_result.get("within_30d_window"):
         # ML yakin — ini jalur utama (RUL <= 30 hari)
         display = _rul_to_display(ml_result["rul_hours"])
         return {
@@ -275,33 +250,36 @@ async def predict_hybrid(
             "current_score": ml_result.get("current_score"),
         }
 
-    if ml_result is not None:
-        # RUL > 30 hari: dashboard cukup menampilkan skor air.
-        return {
-            "rul_hours": ml_result.get("raw_rul_hours", ml_result["rul_hours"]),
-            "rul_days": None,
-            "days_until_threshold": None,
-            "predicted_date": None,
-            "within_30d_window": False,
-            "display_hint": "score_only",
-            "confidence": ml_result.get("confidence", 0.0),
-            "model_used": ml_result.get("model_used", "xgb_v3_lean_30d"),
-            "already_below_threshold": ml_result.get(
-                "already_below_threshold", False
-            ),
-            "trend_direction": "stable",
-            "is_early_warning_active": False,
-            "current_score": ml_result.get("current_score"),
-        }
+    # RUL > 30 hari: dashboard cukup menampilkan skor air.
+    return {
+        "rul_hours": ml_result.get("raw_rul_hours", ml_result["rul_hours"]),
+        "rul_days": None,
+        "days_until_threshold": None,
+        "predicted_date": None,
+        "within_30d_window": False,
+        "display_hint": "score_only",
+        "confidence": ml_result.get("confidence", 0.0),
+        "model_used": ml_result.get("model_used", "xgb_v3_lean_30d"),
+        "already_below_threshold": ml_result.get("already_below_threshold", False),
+        "trend_direction": "stable",
+        "is_early_warning_active": False,
+        "current_score": ml_result.get("current_score"),
+    }
 
-    # ML tidak bisa → regresi lama (scheduler & predictions)
-    fallback = _regression_fallback(timestamps, scores, threshold)
-    fallback = dict(fallback)
-    fallback["model_used"] = fallback.get("model_used", MODEL_FALLBACK)
-    fallback["display_hint"] = "regression_eta"
-    fallback["within_30d_window"] = None
-    fallback["is_early_warning_active"] = False
-    return fallback
+
+def _not_ready_result(status: str, message: str) -> dict[str, Any]:
+    return {
+        "status": status,
+        "message": message,
+        "rul_hours": None,
+        "rul_days": None,
+        "days_until_threshold": None,
+        "predicted_date": None,
+        "confidence": None,
+        "model_used": "xgboost",
+        "within_30d_window": None,
+        "is_early_warning_active": False,
+    }
 
 
 def lookback_hours_for_ml() -> int:

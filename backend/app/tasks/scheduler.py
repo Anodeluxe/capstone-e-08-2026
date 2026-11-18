@@ -54,8 +54,7 @@ def stop_scheduler() -> None:
 
 async def run_prediction_job() -> None:
     """
-    Fetch last 72h of sensor + score data, run hybrid prediction
-    (ML XGBoost horizon + regression fallback), persist, and notify.
+    Fetch recent sensor + score data, run XGBoost, persist, and notify.
     """
     print(f"[Scheduler] Running prediction job at {datetime.utcnow().isoformat()}")
 
@@ -90,6 +89,10 @@ async def run_prediction_job() -> None:
             scores=scores,
             overall_scores=scores,
         )
+
+    if prediction.get("status") in {"insufficient_history", "model_unavailable"}:
+        print(f"[Scheduler] {prediction['message']} — skipping.")
+        return
 
     days_until = prediction.get("days_until_threshold")
     predicted_date = prediction.get("predicted_date")

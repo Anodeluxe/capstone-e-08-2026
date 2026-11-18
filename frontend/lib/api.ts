@@ -74,9 +74,16 @@ export const predictionsApi = {
   latest: () =>
     api.get<PredictionResult[]>('/predictions/latest').then((r) => r.data),
 
-  run: (hours = 72) =>
+  run: (hours = 73) =>
     api
-      .get<PredictionResult>('/predictions/run', { params: { hours } })
+      .get<{
+        data_points: number
+        current_score: number | null
+        prediction: {
+          status?: 'insufficient_history' | 'model_unavailable'
+          message?: string
+        }
+      }>('/predictions/run', { params: { hours } })
       .then((r) => r.data),
 }
 

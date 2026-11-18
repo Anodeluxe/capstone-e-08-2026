@@ -16,9 +16,9 @@ export default function PredictionsPage() {
   const { data: dashboard } = useDashboardSummary()
   const latest = predictions?.[0] ?? null
 
-  const { mutate: runPrediction, isPending } = useMutation({
+  const { mutate: runPrediction, isPending, data: runResult, isError } = useMutation({
     mutationFn: () => predictionsApi.run(),
-    onSuccess: () => { refetch() },
+    onSuccess: () => refetch(),
   })
 
   return (
@@ -27,7 +27,7 @@ export default function PredictionsPage() {
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Prediksi Degradasi</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Model hybrid memprediksi kapan kualitas air akan melanggar ambang batas
+            Model XGBoost memprediksi kapan kualitas air akan melanggar ambang batas
           </p>
         </div>
         <Button
@@ -43,11 +43,19 @@ export default function PredictionsPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
         <div className="md:col-span-1">
-          <ETACard
-            prediction={latest}
-            currentScore={dashboard?.latest_reading?.score_overall ?? null}
-            isLoading={isLoading}
-          />
+          {isError || runResult?.prediction.status ? (
+            <div role="status" className="rounded-xl border border-border bg-card p-6">
+              <p className="text-sm text-amber-600 dark:text-amber-400">
+                {isError ? 'Prediksi gagal dijalankan. Silakan coba kembali.' : runResult?.prediction.message}
+              </p>
+            </div>
+          ) : (
+            <ETACard
+              prediction={latest}
+              currentScore={dashboard?.latest_reading?.score_overall ?? null}
+              isLoading={isLoading || isPending}
+            />
+          )}
         </div>
         <div className="md:col-span-2">
           <TrendChart

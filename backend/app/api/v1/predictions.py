@@ -8,7 +8,6 @@ from app.core.database import get_db
 from app.models.sensor_reading import SensorReading
 from app.models.valve import PredictionResult
 from app.schemas.valve import PredictionResultOut
-from app.services.prediction_service import predict_eta
 from app.services.ml_prediction_service import predict_hybrid
 
 router = APIRouter(prefix="/predictions", tags=["Predictions"])
@@ -27,7 +26,7 @@ async def get_latest_predictions(db: AsyncSession = Depends(get_db)):
 @router.get("/run", response_model=dict)
 async def run_prediction_now(
     hours: int = Query(default=73, ge=6, le=720),
-    mode: str = Query(default="auto", pattern="^(auto|ml|linear)$"),
+    mode: str = Query(default="auto", pattern="^(auto|ml)$"),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -51,9 +50,6 @@ async def run_prediction_now(
     )
     rows = result.all()
 
-    if not rows:
-        return {"error": "Not enough data for prediction.", "data_points": 0}
-
     timestamps = [r[0] for r in rows]
     scores = [r[1] for r in rows]
 
@@ -64,6 +60,13 @@ async def run_prediction_now(
         overall_scores=scores,
         mode=mode,
     )
+
+    if prediction.get("status") in {"insufficient_history", "model_unavailable"}:
+        return {
+            "data_points": len(scores),
+            "current_score": scores[-1] if scores else None,
+            "prediction": prediction,
+        }
 
     pred_row = PredictionResult(
         computed_at=datetime.utcnow(),
