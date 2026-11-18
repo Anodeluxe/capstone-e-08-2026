@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     app_env: str = "development"
     secret_key: str = "changeme"
     enable_docs: bool = False  # True = Swagger /docs tetap aktif di production
+    demo_mode: bool = False
 
     # ── Database ─────────────────────────────────────────────────────────────
     database_url: str = "postgresql+asyncpg://postgres:password@localhost:5432/toren_db"

@@ -12,9 +12,10 @@ import { id as idLocale } from 'date-fns/locale'
 
 interface Props {
   valve: ValveState
+  readOnly?: boolean
 }
 
-export default function ValveCard({ valve }: Props) {
+export default function ValveCard({ valve, readOnly = false }: Props) {
   const [modalOpen, setModalOpen] = useState(false)
   const [pendingAction, setPendingAction] = useState<'open' | 'close'>('open')
 
@@ -66,7 +67,7 @@ export default function ValveCard({ valve }: Props) {
           </dl>
         )}
 
-        <Button
+        {!readOnly && <Button
           onClick={handleToggle}
           variant={isOpen ? 'outline' : 'default'}
           className={cn(
@@ -77,15 +78,15 @@ export default function ValveCard({ valve }: Props) {
         >
           {isOpen ? <PowerOff className="size-4" /> : <Power className="size-4" />}
           {isOpen ? 'Tutup Katup' : 'Buka Katup'}
-        </Button>
+        </Button>}
       </div>
 
-      <OverrideModal
+      {!readOnly && <OverrideModal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         valve={valve}
         action={pendingAction}
-      />
+      />}
     </>
   )
 }

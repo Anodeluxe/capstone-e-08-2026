@@ -44,6 +44,9 @@ async def get_notification_status(current_user: dict | None = Depends(get_curren
     Check the operational status of notification channels,
     including WAHA (WhatsApp HTTP API) session connectivity.
     """
+    if settings.demo_mode:
+        return {"demo_mode": True, "notifications_enabled": False}
+
     waha_info = await notification_service.check_waha_session_status()
 
     return {
@@ -75,6 +78,8 @@ async def send_test_notification(
     """
     Dispatch a test alert via WAHA (WhatsApp) or Email.
     """
+    if settings.demo_mode:
+        raise HTTPException(status_code=403, detail="Notifications are disabled in demo mode.")
     operator = current_user.get("sub", "operator_test") if current_user else "operator_local"
     text = req.message or (
         f"🔔 *UJI COBA NOTIFIKASI CAPSTONE E-08*\n"
@@ -135,6 +140,8 @@ async def trigger_ews_notification(
     Manually trigger an Early Warning System (EWS) notification alert.
     Useful for demonstration during sidang/evaluation.
     """
+    if settings.demo_mode:
+        raise HTTPException(status_code=403, detail="Notifications are disabled in demo mode.")
     from datetime import datetime, timedelta, timezone
 
     predicted_date = (datetime.now(timezone.utc) + timedelta(days=req.days_until)).strftime("%d %b %Y")

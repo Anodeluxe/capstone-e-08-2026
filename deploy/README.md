@@ -147,6 +147,49 @@ git pull
 
 ---
 
+## 6a. Backend dan Frontend Demo (Read-only)
+
+Demo menggunakan database `skenario_2` dalam container terpisah. Backend demo
+tidak menjalankan MQTT atau scheduler; endpoint kontrol katup, notifikasi, dan
+perubahan drain cycle ditolak server-side. Prediksi manual tetap tersedia dan
+menyimpan hasil hanya ke database demo.
+
+Frontend demo menggunakan hostname terpisah agar URL API/WebSocket dapat
+diarahkan tanpa mengubah deployment production:
+
+```text
+https://demo.aminu.irsad.site       → http://localhost:3001
+https://demo-api.aminu.irsad.site   → http://localhost:8006
+```
+
+Tambahkan kedua hostname tersebut ke DNS/tunnel Cloudflare sebelum menjalankan
+container demo. Lalu, dari direktori repository di server:
+
+```bash
+# Build image backend dari kode terbaru; hanya build, tidak menjalankan production.
+docker compose --profile app build backend
+
+# Jalankan stack demo saja. Database dan broker yang ada tidak direcreate.
+docker compose --profile demo up -d --build backend-demo frontend-demo
+```
+
+Verifikasi backend dan pengaman demo:
+
+```bash
+curl -fsS http://127.0.0.1:8006/health
+curl -i -X POST http://127.0.0.1:8006/api/v1/valves/auto
+curl -i -X POST http://127.0.0.1:8006/api/v1/notifications/test \
+  -H 'Content-Type: application/json' -d '{"channel":"all"}'
+```
+
+Health harus menunjukkan `demo_mode: true` dan `mqtt_connected: false`; kedua
+aksi kontrol harus merespons `403`. Frontend demo menampilkan penanda DEMO,
+mengambil data API nyata (bukan mock), dan tetap mengizinkan prediksi manual.
+Jangan jalankan `docker compose --profile app up` hanya untuk demo karena itu
+ikut mengelola stack production.
+
+---
+
 ## 7. Migrasi Database
 
 Tabel dibuat otomatis saat backend start (`init_db()` → `create_all` + hypertable).

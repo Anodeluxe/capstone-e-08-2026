@@ -10,6 +10,8 @@ import { format } from 'date-fns'
 import { id as idLocale } from 'date-fns/locale'
 import { cn, toUtcDate } from '@/lib/utils'
 
+const READ_ONLY = process.env.NEXT_PUBLIC_DEMO_READ_ONLY === 'true'
+
 export default function ValvesPage() {
   const { data: valves, isLoading, isError, refetch } = useValveList()
   const { data: overrides } = useValveOverrides()
@@ -30,7 +32,7 @@ export default function ValvesPage() {
           <h1 className="text-xl font-semibold tracking-tight">Kontrol Katup</h1>
           <p className="text-sm text-muted-foreground mt-0.5">Kelola status buka/tutup katup solenoid secara manual</p>
         </div>
-        <Button
+        {!READ_ONLY && <Button
           variant="outline"
           size="sm"
           className="gap-2"
@@ -39,7 +41,7 @@ export default function ValvesPage() {
         >
           <RotateCcw className="size-4" />
           {isResumingAuto ? 'Mengaktifkan...' : 'Kembali ke Otomatis'}
-        </Button>
+        </Button>}
       </div>
 
       {isError ? (
@@ -76,7 +78,7 @@ export default function ValvesPage() {
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {mergedValves.map((valve) => (
-              <ValveCard key={valve.id} valve={valve} />
+              <ValveCard key={valve.id} valve={valve} readOnly={READ_ONLY} />
             ))}
           </div>
         </>

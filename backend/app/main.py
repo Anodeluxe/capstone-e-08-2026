@@ -44,22 +44,19 @@ async def lifespan(app: FastAPI):
     from app.services.ml_config import init_ml_config
     await init_ml_config()
 
-    # 3. Start MQTT client (connects + starts paho background loop)
-    mqtt_client.start()
+    if not settings.demo_mode:
+        mqtt_client.start()
+        register_handlers(mqtt_client)
+        start_scheduler()
 
-    # 4. Register MQTT message handlers
-    register_handlers(mqtt_client)
-
-    # 5. Start APScheduler (hourly prediction job)
-    start_scheduler()
-
-    print("[App] Startup complete. Ready to receive data from ESP32.")
+    print("[App] Startup complete. Demo mode: " + str(settings.demo_mode))
     yield
 
     # ── Shutdown ──────────────────────────────────────────────────────────────
     print("[App] Shutting down...")
-    stop_scheduler()
-    mqtt_client.stop()
+    if not settings.demo_mode:
+        stop_scheduler()
+        mqtt_client.stop()
 
 
 # ─── App instance ──────────────────────────────────────────────────────────────
@@ -135,4 +132,5 @@ async def health_check():
         "mqtt_connected": mqtt_client.is_connected,
         "ws_clients": ws_manager.connection_count,
         "env": settings.app_env,
+        "demo_mode": settings.demo_mode,
     }

@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 
 from app.core.auth import verify_api_key
+from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.security import UserOut, get_current_user_optional
 from app.core.websocket_manager import ws_manager
@@ -38,6 +39,8 @@ async def resume_auto_control(
     api_key: str = Depends(verify_api_key),
 ):
     """Return every valve to automatic control using the latest reading."""
+    if get_settings().demo_mode:
+        raise HTTPException(status_code=403, detail="Valve control is disabled in demo mode.")
     latest = (
         await db.execute(
             select(SensorReading).order_by(SensorReading.timestamp.desc()).limit(1)
@@ -91,6 +94,8 @@ async def send_valve_command(
     Manual override — open or close a specific valve.
     Requires Bearer JWT token or X-API-Key header (falls back to operator_local).
     """
+    if get_settings().demo_mode:
+        raise HTTPException(status_code=403, detail="Valve control is disabled in demo mode.")
     if valve_id not in VALID_VALVE_IDS:
         raise HTTPException(status_code=400, detail=f"Invalid valve_id: {valve_id}")
 

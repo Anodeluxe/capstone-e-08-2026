@@ -4,6 +4,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.config import get_settings
 from app.core.time_utils import utc_to_iso
 from app.models.drain_log import DrainLog
 from app.models.sensor_reading import SensorReading
@@ -87,6 +88,8 @@ async def start_drain(
     body: DrainCycleStartRequest,
     db: AsyncSession = Depends(get_db),
 ):
+    if get_settings().demo_mode:
+        raise HTTPException(status_code=403, detail="Drain-cycle changes are disabled in demo mode.")
     log = await start_drain_cycle(
         db,
         cycle_estimate_hours=body.cycle_estimate_hours,
@@ -102,6 +105,8 @@ async def end_drain(
     drain_log_id: int,
     db: AsyncSession = Depends(get_db),
 ):
+    if get_settings().demo_mode:
+        raise HTTPException(status_code=403, detail="Drain-cycle changes are disabled in demo mode.")
     log = await end_drain_cycle(db, drain_log_id, ended_by="operator")
     if log is None:
         raise HTTPException(status_code=404, detail="Drain cycle not found")

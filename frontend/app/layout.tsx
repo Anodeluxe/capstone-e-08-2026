@@ -33,6 +33,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <PwaRegister />
           <Nav />
           <main className="flex-1 container mx-auto max-w-7xl px-4 py-6 pb-24 md:pb-6">
+            {process.env.NEXT_PUBLIC_DEMO_READ_ONLY === 'true' && (
+              <div className="mb-5 flex items-center gap-2 rounded-lg border border-amber-300/70 bg-amber-50/70 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200" role="status">
+                <span className="font-semibold tracking-wide">DEMO</span>
+                <span>Data simulasi · kontrol perangkat dinonaktifkan</span>
+              </div>
+            )}
             {children}
           </main>
         </Providers>
