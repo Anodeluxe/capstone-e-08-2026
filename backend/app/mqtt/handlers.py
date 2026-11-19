@@ -46,6 +46,37 @@ settings = get_settings()
 _previous_reading: dict | None = None
 _previous_score: float | None = None
 
+# Device clocks can drift or be set to the wrong timezone. Keep only small
+# skews; everything else is replaced by the server receive time.
+_MAX_FUTURE_SKEW = timedelta(minutes=2)
+_MAX_PAST_SKEW = timedelta(minutes=10)
+
+
+def _resolve_reading_timestamp(device_timestamp: int | None) -> datetime:
+    now = datetime.utcnow()
+    if not device_timestamp:
+        return now
+
+    try:
+        timestamp = datetime.fromtimestamp(
+            device_timestamp, tz=timezone.utc
+        ).replace(tzinfo=None)
+    except (OverflowError, OSError, ValueError):
+        print(f"[Handler] Invalid device timestamp: {device_timestamp}")
+        return now
+
+    if (
+        timestamp > now + _MAX_FUTURE_SKEW
+        or timestamp < now - _MAX_PAST_SKEW
+    ):
+        print(
+            f"[Handler] Ignoring out-of-range device timestamp "
+            f"{timestamp.isoformat()} (server now {now.isoformat()})"
+        )
+        return now
+
+    return timestamp
+
 
 def register_handlers(mqtt_client) -> None:
     """
@@ -85,13 +116,7 @@ async def handle_sensor_reading(raw_payload: str) -> None:
         print(f"[Handler] Invalid sensor payload: {e}\nPayload: {raw_payload}")
         return
 
-    timestamp = (
-        datetime.fromtimestamp(reading.timestamp, tz=timezone.utc).replace(
-            tzinfo=None
-        )
-        if reading.timestamp
-        else datetime.utcnow()
-    )
+    timestamp = _resolve_reading_timestamp(reading.timestamp)
 
     current_raw = {
         "ph": reading.ph,

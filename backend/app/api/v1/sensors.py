@@ -20,10 +20,14 @@ async def export_sensor_data(
     db: AsyncSession = Depends(get_db),
 ):
     """Export raw readings and computed scores for offline ML analysis."""
-    since = datetime.utcnow() - timedelta(hours=hours)
+    now = datetime.utcnow()
+    since = now - timedelta(hours=hours)
     result = await db.execute(
         select(SensorReading)
-        .where(SensorReading.timestamp >= since)
+        .where(
+            SensorReading.timestamp >= since,
+            SensorReading.timestamp <= now,
+        )
         .order_by(SensorReading.timestamp.asc())
     )
     output = StringIO()
@@ -51,6 +55,7 @@ async def get_latest_reading(db: AsyncSession = Depends(get_db)):
     """Get the most recent sensor reading."""
     result = await db.execute(
         select(SensorReading)
+        .where(SensorReading.timestamp <= datetime.utcnow())
         .order_by(SensorReading.timestamp.desc())
         .limit(1)
     )
@@ -71,10 +76,14 @@ async def get_sensor_history(
     Return sensor readings for the last `hours` hours.
     Optionally filter to show only readings where a specific parameter changed.
     """
-    since = datetime.utcnow() - timedelta(hours=hours)
+    now = datetime.utcnow()
+    since = now - timedelta(hours=hours)
     result = await db.execute(
         select(SensorReading)
-        .where(SensorReading.timestamp >= since)
+        .where(
+            SensorReading.timestamp >= since,
+            SensorReading.timestamp <= now,
+        )
         .order_by(SensorReading.timestamp.asc())
     )
     return list(result.scalars().all())
@@ -90,7 +99,8 @@ async def get_hourly_averages(
     the average of all samples inside that hour; `timestamp` is the bucket
     start (e.g. 10:00:00). Hours without any reading are omitted.
     """
-    since = datetime.utcnow() - timedelta(hours=hours)
+    now = datetime.utcnow()
+    since = now - timedelta(hours=hours)
     bucket = func.date_trunc("hour", SensorReading.timestamp).label("hour")
 
     result = await db.execute(
@@ -110,7 +120,10 @@ async def get_hourly_averages(
             func.min(SensorReading.anomaly_parameter).label("anomaly_parameter"),
             func.count(SensorReading.id).label("sample_count"),
         )
-        .where(SensorReading.timestamp >= since)
+        .where(
+            SensorReading.timestamp >= since,
+            SensorReading.timestamp <= now,
+        )
         .group_by(bucket)
         .order_by(bucket)
     )
@@ -145,10 +158,14 @@ async def get_anomaly_events(
     db: AsyncSession = Depends(get_db),
 ):
     """Return all readings flagged as sudden changes in the last N hours."""
-    since = datetime.utcnow() - timedelta(hours=hours)
+    now = datetime.utcnow()
+    since = now - timedelta(hours=hours)
     result = await db.execute(
         select(SensorReading)
-        .where(SensorReading.timestamp >= since)
+        .where(
+            SensorReading.timestamp >= since,
+            SensorReading.timestamp <= now,
+        )
         .where(SensorReading.is_sudden_change == True)  # noqa: E712
         .order_by(SensorReading.timestamp.desc())
     )

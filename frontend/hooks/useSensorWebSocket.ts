@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useCallback } from 'react'
 import { create } from 'zustand'
-import type { SensorReading, ValveState, AlertData, ScoreBreakdown } from '@/types'
+import type { SensorReading, AlertData, ScoreBreakdown } from '@/types'
 import { mockLatestReading, mockAlert } from '@/lib/mockData'
 
 type ConnectionStatus = 'connecting' | 'connected' | 'disconnected'
@@ -20,6 +20,7 @@ interface ValveStatusEvent {
 interface WSStore {
   status: ConnectionStatus
   latestReading: SensorUpdate | null
+  recentReadings: SensorUpdate[]
   valveStates: Record<string, ValveStatusEvent>
   alerts: AlertData[]
   setStatus: (s: ConnectionStatus) => void
@@ -32,10 +33,23 @@ interface WSStore {
 export const useWSStore = create<WSStore>((set) => ({
   status: 'disconnected',
   latestReading: null,
+  recentReadings: [],
   valveStates: {},
   alerts: [],
   setStatus: (status) => set({ status }),
-  setLatestReading: (latestReading) => set({ latestReading }),
+  setLatestReading: (latestReading) =>
+    set((state) => {
+      const withoutDuplicate = state.recentReadings.filter(
+        (reading) => reading.id !== latestReading.id,
+      )
+      const recentReadings = [...withoutDuplicate, latestReading]
+        .sort(
+          (a, b) =>
+            new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+        )
+        .slice(-120)
+      return { latestReading, recentReadings }
+    }),
   updateValveState: (v) =>
     set((state) => ({
       valveStates: { ...state.valveStates, [v.valve_id]: v },
@@ -78,7 +92,7 @@ export function useSensorWebSocket() {
     }
   }
 
-  const connect = useCallback(() => {
+  const connect = useCallback(function connect() {
     if (unmountedRef.current) return
 
     setStatus('connecting')
