@@ -2,7 +2,7 @@
 
 import { format } from 'date-fns'
 import { id as idLocale } from 'date-fns/locale'
-import { cn, isStatisticalModel, toUtcDate } from '@/lib/utils'
+import { cn, toUtcDate } from '@/lib/utils'
 import type { PredictionResult } from '@/types'
 
 interface Props {
@@ -45,9 +45,7 @@ export default function ETACard({ prediction, currentScore, isLoading }: Props) 
     )
   }
 
-  const { days_until_threshold: days, predicted_date, confidence, model_used } = prediction
-  const isStat = isStatisticalModel(model_used)
-  const confidencePct = confidence !== null ? (confidence * 100).toFixed(0) : null
+  const { days_until_threshold: days, predicted_date, model_used } = prediction
 
   // RUL hanya ditampilkan bila <= 30 hari; di atas itu tampilkan skor air saja.
   const isBeyond30d = prediction.rul_hours != null && prediction.rul_hours > 720
@@ -103,11 +101,6 @@ export default function ETACard({ prediction, currentScore, isLoading }: Props) 
         <span>
           Model: <span className="text-foreground font-mono">{model_used}</span>
         </span>
-        {!isStat && confidencePct !== null && (
-          <span>
-            Kepercayaan: <span className="text-foreground font-mono">{confidencePct}%</span>
-          </span>
-        )}
       </div>
     </div>
   )
