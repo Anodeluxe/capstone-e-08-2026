@@ -105,6 +105,7 @@ async def aggregate_hourly_readings(
 
     Hasil kolom: ['timestamp', 'ph', 'tds', 'turbidity', 'temperature', 'score_overall']
     """
+    now = datetime.utcnow()
     hour_trunc = func.date_trunc("hour", SensorReading.timestamp).label("hour")
 
     stmt = (
@@ -116,7 +117,10 @@ async def aggregate_hourly_readings(
             func.avg(SensorReading.temperature).label("temperature"),
             func.avg(SensorReading.score_overall).label("score_overall"),
         )
-        .where(SensorReading.timestamp >= since_datetime)
+        .where(
+            SensorReading.timestamp >= since_datetime,
+            SensorReading.timestamp <= now,
+        )
         .group_by(hour_trunc)
         .order_by(hour_trunc.asc())
     )

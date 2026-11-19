@@ -44,28 +44,30 @@ export default function SensorsPage() {
   const { data: history, isLoading: historyLoading } = useSensorHistory(hours, !isHourly)
   const { data: hourly, isLoading: hourlyLoading } = useSensorHourly(HOURLY_HOURS, isHourly)
   const { data: anomalies } = useSensorAnomalies(72)
-  const { latestReading } = useWSStore()
+  const { recentReadings } = useWSStore()
 
   const isLoading = isHourly ? hourlyLoading : historyLoading
 
-  // Chart: raw readings for the 6/24/48/72h views, hourly averages otherwise.
+  // History dari API urut lama -> baru. Gabungkan reading live dari
+  // WebSocket supaya setiap baris baru langsung muncul di atas tabel dan
+  // baris sebelumnya bergeser ke bawah, tanpa menunggu refetch.
+  const mergedReadings = useMemo(() => {
+    if (isHourly) return []
+    const byId = new Map<number, SensorReading>()
+    for (const row of history ?? []) byId.set(row.id, row)
+    for (const row of recentReadings) byId.set(row.id, row)
+    return Array.from(byId.values()).sort(
+      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+    )
+  }, [history, recentReadings, isHourly])
+
   const chartData: Array<SensorReading | HourlySensorReading> = isHourly
     ? hourly ?? []
-    : history ?? []
+    : mergedReadings
 
-  // History dari API urut lama → baru (ascending). Tabel "Pembacaan Terbaru"
-  // harus menampilkan data TERAKHIR dengan yang terbaru di atas. Reading live
-  // dari WebSocket hanya digabung pada mode mentah (bukan mode per jam).
-  const latestRows = useMemo(() => {
-    if (isHourly) return (hourly ?? []).slice().reverse()
-
-    const rows: SensorReading[] = history ?? []
-    const merged =
-      latestReading && !rows.some((r) => r.id === latestReading.id)
-        ? [...rows, latestReading]
-        : rows
-    return merged.slice(-50).reverse()
-  }, [history, hourly, isHourly, latestReading])
+  const latestRows = isHourly
+    ? (hourly ?? []).slice().reverse()
+    : mergedReadings.slice(-50).reverse()
 
   return (
     <div className="flex flex-col gap-6">

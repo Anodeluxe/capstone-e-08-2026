@@ -38,3 +38,6 @@ todo.md
 # Runtime state broker (jangan di-track)
 mosquitto/data/*.db
 mosquitto/log/*
+
+# C501
+C501

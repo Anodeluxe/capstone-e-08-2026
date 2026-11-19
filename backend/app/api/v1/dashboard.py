@@ -22,13 +22,17 @@ async def get_dashboard_summary(db: AsyncSession = Depends(get_db)):
     """
 
     # ── Latest reading ────────────────────────────────────────────────────────
+    now = datetime.utcnow()
     latest_result = await db.execute(
-        select(SensorReading).order_by(SensorReading.timestamp.desc()).limit(1)
+        select(SensorReading)
+        .where(SensorReading.timestamp <= now)
+        .order_by(SensorReading.timestamp.desc())
+        .limit(1)
     )
     latest = latest_result.scalar_one_or_none()
 
     # ── 24-hour trend (hourly averages) ───────────────────────────────────────
-    since_24h = datetime.utcnow() - timedelta(hours=24)
+    since_24h = now - timedelta(hours=24)
     trend_result = await db.execute(
         select(
             func.date_trunc("hour", SensorReading.timestamp).label("hour"),
@@ -37,7 +41,10 @@ async def get_dashboard_summary(db: AsyncSession = Depends(get_db)):
             func.avg(SensorReading.turbidity).label("avg_turbidity"),
             func.avg(SensorReading.tds).label("avg_tds"),
         )
-        .where(SensorReading.timestamp >= since_24h)
+        .where(
+            SensorReading.timestamp >= since_24h,
+            SensorReading.timestamp <= now,
+        )
         .group_by("hour")
         .order_by("hour")
     )
@@ -56,7 +63,10 @@ async def get_dashboard_summary(db: AsyncSession = Depends(get_db)):
     # ── Anomaly count (last 24h) ───────────────────────────────────────────────
     anomaly_result = await db.execute(
         select(func.count(SensorReading.id))
-        .where(SensorReading.timestamp >= since_24h)
+        .where(
+            SensorReading.timestamp >= since_24h,
+            SensorReading.timestamp <= now,
+        )
         .where(SensorReading.is_sudden_change == True)  # noqa: E712
     )
     anomaly_count = anomaly_result.scalar() or 0
@@ -79,7 +89,7 @@ async def get_dashboard_summary(db: AsyncSession = Depends(get_db)):
         "system_status": {
             "mqtt_connected": _get_mqtt_status(),
             "last_reading_age_seconds": (
-                (datetime.utcnow() - latest.timestamp).total_seconds()
+                (now - latest.timestamp).total_seconds()
                 if latest else None
             ),
         },
